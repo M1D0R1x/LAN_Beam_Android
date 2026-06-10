@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">LAN Beam</string>
+    <string name="notif_channel_name">LAN Beam Server</string>
+    <string name="notif_channel_desc">Shows when the file sharing server is active</string>
 </resources>

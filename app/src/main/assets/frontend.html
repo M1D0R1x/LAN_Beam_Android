@@ -1,1240 +1,908 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>LAN Beam</title>
-<meta name="theme-color" content="#0c0c10">
-<meta name="description" content="Share files between devices on your local Wi-Fi network — no internet needed">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
-:root{
-  --bg:#09090e;--card:rgba(22,22,30,0.45);--card-glowing:rgba(30,30,42,0.7);--card2:rgba(30,30,42,0.6);
-  --border:rgba(255,255,255,0.07);--border-hover:rgba(129,140,248,0.3);--fg:#f3f4f6;--muted:#9ca3af;
-  --primary:#818cf8;--primary-fg:#fff;--success:#4ade80;--danger:#f87171;--accent:#c084fc;
-  --warning:#fbbf24;
-  --radius:16px;--radius-sm:10px;
+:root {
+  --bg: #0c0c10; --card: #16161e; --card2: #1a1a26; --border: #262630;
+  --text: #eeeef2; --text2: #8888a0; --primary: #818cf8; --primary-dim: rgba(129,140,248,0.15);
+  --success: #4ade80; --error: #f87171; --warning: #fbbf24;
+  --radius: 14px; --radius-sm: 8px;
 }
-html{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--fg);-webkit-tap-highlight-color:transparent}
-body{
-  min-height:100dvh;
-  overflow-x:hidden;
-  background:radial-gradient(circle at 10% 20%, rgba(129,140,248,0.08), transparent 40%),
-              radial-gradient(circle at 90% 80%, rgba(192,132,252,0.06), transparent 45%),
-              #09090e;
-}
-a{color:inherit;text-decoration:none}
-button{font:inherit;border:0;cursor:pointer;background:0 0;color:inherit;transition:all 0.2s ease}
-input{font:inherit;border:0;outline:0;background:0 0;color:inherit}
-::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+body { font-family:system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; display:flex; flex-direction:column; overflow-x:hidden; }
+a { color:var(--primary); text-decoration:none; }
+button { font-family:inherit; cursor:pointer; border:none; outline:none; }
 
-.app{max-width:520px;margin:0 auto;padding:20px 16px 110px}
-.nav{
-  position:fixed;
-  bottom:16px;
-  left:16px;
-  right:16px;
-  max-width:488px;
-  margin:0 auto;
-  display:flex;
-  justify-content:space-around;
-  padding:6px;
-  border-radius:20px;
-  background:rgba(12,12,16,.75);
-  backdrop-filter:blur(24px) saturate(1.4);
-  -webkit-backdrop-filter:blur(24px) saturate(1.4);
-  border:1px solid rgba(255,255,255,0.06);
-  box-shadow:0 12px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.02) inset;
-  z-index:50;
-}
-.nav-btn{
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  gap:3px;
-  padding:10px 14px;
-  border-radius:14px;
-  font-size:10px;
-  font-weight:600;
-  color:var(--muted);
-  min-width:56px;
-  min-height:48px;
-  position:relative;
-}
-.nav-btn.active{
-  color:var(--primary);
-  background:rgba(129,140,248,.12);
-  box-shadow:0 0 0 1px rgba(129,140,248,0.1) inset;
-}
-.nav-btn svg{width:18px;height:18px}
-/* Connection status dot on home nav button */
-.nav-btn .conn-dot{
-  position:absolute;
-  top:6px;
-  right:10px;
-  width:7px;
-  height:7px;
-  border-radius:50%;
-  background:var(--success);
-  box-shadow:0 0 8px var(--success);
-  transition:all 0.3s ease;
-}
-.nav-btn .conn-dot.offline{
-  background:var(--danger);
-  box-shadow:0 0 8px var(--danger);
-}
+/* Scrollbar */
+::-webkit-scrollbar { width:4px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--border); border-radius:4px; }
 
-.page{display:none;animation:fadeIn .3s cubic-bezier(0.4, 0, 0.2, 1)}.page.active{display:block}
-@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+/* Page Container */
+.page { display:none; flex:1; flex-direction:column; overflow-y:auto; padding:16px; padding-bottom:80px; transition:padding-bottom .2s; }
+.page.active { display:flex; }
+body.select-mode .page { padding-bottom:150px; }
 
-/* Home */
-.badge{
-  display:inline-flex;
-  align-items:center;
-  gap:6px;
-  padding:6px 14px;
-  border-radius:99px;
-  border:1px solid var(--border);
-  background:rgba(22,22,30,0.6);
-  font-size:11px;
-  font-weight:600;
-  color:var(--muted);
-  backdrop-filter:blur(4px);
-}
-.badge .dot{width:6px;height:6px;border-radius:50%;background:var(--success);box-shadow:0 0 10px var(--success);animation:dotPulse 2s ease-in-out infinite}
-@keyframes dotPulse{0%,100%{opacity:1}50%{opacity:.5}}
-.hero-title{
-  font-size:clamp(2.2rem,9vw,3rem);
-  font-weight:800;
-  background:linear-gradient(135deg,#fff 30%,var(--muted) 100%);
-  -webkit-background-clip:text;
-  -webkit-text-fill-color:transparent;
-  letter-spacing:-.03em;
-  margin-top:16px;
-}
-.hero-sub{font-size:14px;color:var(--muted);margin-top:8px;max-width:340px;line-height:1.5}
-.qr-wrap{
-  position:relative;
-  margin:32px auto 0;
-  width:220px;
-  height:220px;
-  border-radius:24px;
-  border:1px solid var(--border);
-  background:linear-gradient(135deg, rgba(22,22,30,0.6) 0%, rgba(12,12,16,0.8) 100%);
-  padding:16px;
-  box-shadow:0 12px 40px rgba(129,140,248,0.18), 0 0 0 1px rgba(255,255,255,0.03) inset;
-  backdrop-filter:blur(8px);
-}
-.qr-wrap img{width:100%;height:100%;border-radius:12px;object-fit:contain}
-.qr-pulse{position:absolute;inset:-6px;border-radius:28px;border:2px solid var(--primary);opacity:.4;animation:pulse 2.4s ease-in-out infinite}
-@keyframes pulse{0%,100%{opacity:.15;transform:scale(1)}50%{opacity:.6;transform:scale(1.03);filter:drop-shadow(0 0 8px var(--primary))}}
-.url-btn{
-  display:flex;
-  align-items:center;
-  gap:8px;
-  margin:18px auto 0;
-  padding:13px 20px;
-  border-radius:var(--radius-sm);
-  border:1px solid var(--border);
-  background:rgba(22,22,30,0.5);
-  font-family:'SF Mono',ui-monospace,monospace;
-  font-size:13px;
-  color:var(--primary);
-  box-shadow:0 4px 12px rgba(0,0,0,0.1);
-  min-height:48px;
-}
-.url-btn:hover{
-  border-color:var(--primary);
-  background:rgba(129,140,248,0.05);
-}
-.url-btn:active{transform:scale(.97)}
-.url-btn.copied{
-  border-color:var(--success);
-  color:var(--success);
-  background:rgba(74,222,128,0.06);
-}
-.stats-row{
-  display:grid;
-  grid-template-columns:repeat(3,1fr);
-  gap:8px;
-  margin-top:24px;
-  padding:14px;
-  border-radius:var(--radius);
-  border:1px solid var(--border);
-  background:rgba(22,22,30,0.4);
-  backdrop-filter:blur(8px);
-}
-.stat{text-align:center;padding:4px 0}.stat-val{font-size:16px;font-weight:700;color:#fff}.stat-label{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-top:3px}
-.action-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px}
-.action-btn{
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  gap:8px;
-  padding:15px;
-  border-radius:var(--radius);
-  font-size:13px;
-  font-weight:700;
-  min-height:52px;
-}
-.action-btn:active{transform:scale(.96)}
-.action-btn.primary{
-  background:linear-gradient(135deg, var(--primary) 0%, #6366f1 100%);
-  color:var(--primary-fg);
-  box-shadow:0 6px 20px rgba(129,140,248,.35);
-}
-.action-btn.primary:hover{
-  box-shadow:0 8px 24px rgba(129,140,248,.5);
-  transform:translateY(-1px);
-}
-.action-btn.secondary{
-  border:1px solid var(--border);
-  background:rgba(22,22,30,0.55);
-}
-.action-btn.secondary:hover{
-  border-color:var(--border-hover);
-  background:rgba(22,22,30,0.75);
-}
-.how-it-works{
-  margin-top:24px;
-  padding:16px;
-  border-radius:var(--radius);
-  border:1px solid var(--border);
-  background:rgba(22,22,30,0.3);
-  text-align:left;
-}
-.how-it-works h3{font-size:13px;font-weight:700;margin-bottom:10px;color:var(--fg)}
-.how-it-works .step{display:flex;gap:10px;padding:7px 0;font-size:12px;color:var(--muted);align-items:center}
-.how-it-works .step-num{width:20px;height:20px;border-radius:6px;background:rgba(129,140,248,.15);color:var(--primary);display:grid;place-items:center;font-weight:700;font-size:11px;flex-shrink:0}
+/* Bottom Nav */
+.nav { position:fixed; bottom:0; left:0; right:0; background:var(--card); border-top:1px solid var(--border); display:flex; z-index:100; padding:6px 0; padding-bottom:max(6px,env(safe-area-inset-bottom)); }
+.nav-btn { flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; padding:8px 4px; background:none; color:var(--text2); font-size:10px; font-weight:600; transition:color .2s; position:relative; min-height:48px; justify-content:center; }
+.nav-btn.active { color:var(--primary); }
+.nav-btn .icon { font-size:20px; line-height:1; }
+.nav-dot { position:absolute; top:6px; right:calc(50% - 16px); width:7px; height:7px; border-radius:50%; }
+.nav-dot.online { background:var(--success); box-shadow:0 0 6px var(--success); }
+.nav-dot.offline { background:var(--error); }
 
-/* Files */
-.toolbar{display:flex;gap:8px;margin-bottom:14px}
-.search-box{
-  flex:1;
-  display:flex;
-  align-items:center;
-  gap:8px;
-  padding:11px 14px;
-  border-radius:var(--radius-sm);
-  border:1px solid var(--border);
-  background:rgba(22,22,30,0.5);
-  transition:all 0.2s ease;
-  min-height:48px;
-}
-.search-box:focus-within{
-  border-color:var(--primary);
-  box-shadow:0 0 0 1px var(--primary);
-}
-.search-box input{flex:1;font-size:14px}
-.search-box input::placeholder{color:var(--muted)}
-.breadcrumb{display:flex;align-items:center;gap:4px;padding:6px 0;font-size:13px;color:var(--muted);flex-wrap:wrap;margin-bottom:10px}
-.breadcrumb span{cursor:pointer;transition:.15s;font-weight:500;padding:4px 6px;border-radius:6px;min-height:32px;display:inline-flex;align-items:center}
-.breadcrumb span:hover{color:var(--fg);background:rgba(255,255,255,0.04)}
-.breadcrumb .sep{opacity:.4;padding:0 2px;min-height:auto}
-.breadcrumb .back-btn{
-  display:inline-flex;align-items:center;gap:4px;
-  padding:6px 12px;border-radius:8px;
-  background:rgba(129,140,248,0.1);color:var(--primary);
-  font-weight:600;font-size:12px;margin-right:8px;
-  min-height:36px;
-}
-.breadcrumb .back-btn:hover{background:rgba(129,140,248,0.18)}
-.file-list{display:flex;flex-direction:column;gap:8px}
-.file-item{
-  display:flex;
-  align-items:center;
-  gap:12px;
-  padding:14px 16px;
-  border-radius:var(--radius);
-  border:1px solid var(--border);
-  background:var(--card);
-  transition:all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  cursor:pointer;
-  backdrop-filter:blur(8px);
-  min-height:64px;
-}
-.file-item:hover{
-  border-color:var(--primary);
-  background:var(--card-glowing);
-  transform:translateY(-2px);
-  box-shadow:0 8px 24px rgba(129,140,248,0.08);
-}
-.file-item:active{transform:scale(.98)}
-.file-icon{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;font-size:18px;flex-shrink:0;box-shadow:0 4px 10px rgba(0,0,0,0.15)}
-.file-icon.video{background:rgba(129,140,248,.15);color:var(--primary)}
-.file-icon.audio{background:rgba(192,132,252,.15);color:var(--accent)}
-.file-icon.image{background:rgba(74,222,128,.15);color:var(--success)}
-.file-icon.folder{background:rgba(250,204,21,.15);color:#facc15}
-.file-icon.pdf{background:rgba(248,113,113,.15);color:var(--danger)}
-.file-icon.archive{background:rgba(96,165,250,.15);color:#60a5fa}
-.file-icon.apk{background:rgba(74,222,128,.15);color:var(--success)}
-.file-icon.doc{background:rgba(136,136,160,.12);color:var(--muted)}
-.file-info{flex:1;min-width:0}
-.file-name{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.file-meta{font-size:11px;color:var(--muted);margin-top:2px}
-.dl-btn{padding:10px;border-radius:10px;color:var(--muted);transition:.15s;flex-shrink:0;min-width:44px;min-height:44px;display:grid;place-items:center}
-.dl-btn:hover{color:var(--primary);background:rgba(129,140,248,.1)}
-.del-btn{padding:10px;border-radius:10px;color:var(--muted);transition:.15s;flex-shrink:0;font-size:14px;min-width:44px;min-height:44px;display:grid;place-items:center}
-.del-btn:hover{color:var(--danger);background:rgba(248,113,113,.1)}
-.empty{text-align:center;padding:50px 16px;color:var(--muted);font-size:14px}
-.empty-icon{font-size:48px;margin-bottom:12px;display:block;opacity:.6}
-.empty-title{font-size:16px;font-weight:700;color:var(--fg);margin-bottom:6px}
-.empty-sub{font-size:13px;color:var(--muted);line-height:1.5}
-.storage-bar{
-  display:flex;
-  align-items:center;
-  gap:10px;
-  padding:12px 16px;
-  border-radius:var(--radius);
-  border:1px solid var(--border);
-  background:rgba(22,22,30,0.5);
-  margin-bottom:16px;
-  font-size:12px;
-  color:var(--muted);
-  backdrop-filter:blur(8px);
-  min-height:48px;
-}
-.storage-bar strong{color:var(--fg)}
-.clear-btn{
-  margin-left:auto;
-  padding:8px 14px;
-  border-radius:8px;
-  font-size:11px;
-  font-weight:700;
-  color:var(--danger);
-  border:1px solid rgba(248,113,113,.25);
-  min-height:36px;
-}
-.clear-btn:hover{background:rgba(248,113,113,.15)}
+/* Cards */
+.card { background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:12px; }
+.card-title { font-size:14px; font-weight:700; color:var(--text); margin-bottom:10px; display:flex; align-items:center; gap:8px; }
 
-/* Skeletons */
-.skeleton-list{display:flex;flex-direction:column;gap:8px}
-.skeleton-item{
-  display:flex;align-items:center;gap:12px;
-  padding:14px 16px;border-radius:var(--radius);
-  border:1px solid var(--border);background:var(--card);
-  min-height:64px;
-}
-.skeleton-icon{width:40px;height:40px;border-radius:10px;background:rgba(255,255,255,0.04);animation:shimmer 1.5s ease-in-out infinite}
-.skeleton-text{height:12px;border-radius:6px;background:rgba(255,255,255,0.04);animation:shimmer 1.5s ease-in-out infinite}
-.skeleton-text.w60{width:60%}.skeleton-text.w40{width:40%}.skeleton-text.w30{width:30%}
-.skeleton-info{flex:1;display:flex;flex-direction:column;gap:6px}
-@keyframes shimmer{0%{opacity:.3}50%{opacity:.6}100%{opacity:.3}}
+/* QR */
+.qr-wrap { display:flex; justify-content:center; padding:12px 0; }
+.qr-wrap img { width:180px; height:180px; border-radius:12px; border:2px solid var(--border); }
 
-/* Upload */
-.drop-zone{
-  border:2px dashed rgba(129, 140, 248, 0.25);
-  border-radius:var(--radius);
-  padding:44px 20px;
-  text-align:center;
-  color:var(--muted);
-  background:rgba(22,22,30,0.25);
-  transition:all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  cursor:pointer;
-}
-.drop-zone:hover{
-  border-color:var(--primary);
-  background:rgba(129,140,248,0.04);
-  transform:translateY(-2px);
-}
-.drop-zone.over{border-color:var(--success);background:rgba(74,222,128,.06)}
-.drop-zone h3{font-size:16px;font-weight:700;color:var(--fg);margin-bottom:6px}
-.drop-zone p{font-size:13px}
-.upload-summary{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:10px 14px;border-radius:var(--radius-sm);
-  background:rgba(129,140,248,0.06);border:1px solid rgba(129,140,248,0.12);
-  margin-top:12px;font-size:12px;color:var(--muted);
-}
-.upload-summary strong{color:var(--fg)}
-.upload-summary .clear-queue{color:var(--danger);font-weight:600;cursor:pointer;padding:4px 8px;border-radius:6px}
-.upload-summary .clear-queue:hover{background:rgba(248,113,113,.1)}
-.upload-list{margin-top:12px;display:flex;flex-direction:column;gap:8px}
-.upload-item{padding:14px;border-radius:var(--radius);border:1px solid var(--border);background:var(--card);position:relative}
-.upload-item .top-row{display:flex;align-items:center;gap:10px}
-.upload-item .u-icon{font-size:16px;flex-shrink:0}
-.upload-item .name{flex:1;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.upload-item .size{font-size:11px;color:var(--muted)}
-.upload-item .status{font-size:11px;font-weight:700}
-.upload-item .status.done{color:var(--success)}.upload-item .status.fail{color:var(--danger)}.upload-item .status.uploading{color:var(--primary)}
-.upload-item .remove-btn{
-  position:absolute;top:8px;right:8px;
-  width:24px;height:24px;border-radius:6px;
-  display:grid;place-items:center;
-  font-size:12px;color:var(--muted);
-  cursor:pointer;transition:.15s;
-}
-.upload-item .remove-btn:hover{color:var(--danger);background:rgba(248,113,113,.1)}
-.progress-wrap{margin-top:10px}
-.progress-bar{width:100%;height:6px;border-radius:99px;background:rgba(255,255,255,0.05);overflow:hidden;box-shadow:inset 0 1px 2px rgba(0,0,0,0.4)}
-.progress-fill{
-  height:100%;
-  border-radius:99px;
-  background:linear-gradient(90deg,var(--primary),var(--accent));
-  transition:width .15s cubic-bezier(0.4, 0, 0.2, 1);
-  width:0;
-  box-shadow:0 0 8px rgba(129, 140, 248, 0.4);
-}
-.progress-stats{display:flex;justify-content:space-between;margin-top:5px;font-size:10px;color:var(--muted)}
-.upload-btn{
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  gap:8px;
-  width:100%;
-  margin-top:14px;
-  padding:15px;
-  border-radius:var(--radius);
-  background:linear-gradient(135deg, var(--primary) 0%, #6366f1 100%);
-  color:var(--primary-fg);
-  font-size:14px;
-  font-weight:700;
-  box-shadow:0 6px 20px rgba(129,140,248,.35);
-  transition:all 0.2s ease;
-  min-height:52px;
-}
-.upload-btn:hover:not(:disabled){
-  transform:translateY(-1px);
-  box-shadow:0 8px 24px rgba(129,140,248,.5);
-}
-.upload-btn:active{transform:scale(.97)}.upload-btn:disabled{opacity:.4;pointer-events:none}
-/* Upload total progress bar */
-.upload-total-progress{
-  margin-top:12px;padding:12px 14px;
-  border-radius:var(--radius-sm);
-  border:1px solid rgba(129,140,248,0.15);
-  background:rgba(129,140,248,0.04);
-}
-.upload-total-progress .label{font-size:12px;font-weight:600;color:var(--fg);margin-bottom:8px;display:flex;justify-content:space-between}
-.upload-total-progress .label span{color:var(--primary)}
+/* URL Bar */
+.url-bar { display:flex; align-items:center; gap:10px; background:var(--card2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px 14px; cursor:pointer; transition:border-color .2s; }
+.url-bar:active { border-color:var(--primary); }
+.url-bar .url-text { flex:1; font-size:14px; font-weight:700; color:var(--primary); font-family:monospace; }
+.url-bar .copy-icon { font-size:16px; transition:transform .15s; }
+.url-bar.copied { border-color:var(--success); }
+.url-bar.copied .copy-icon { transform:scale(1.3); }
 
-/* Download overlay */
-.dl-overlay{
-  position:fixed;
-  inset:0;
-  z-index:100;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  background:rgba(0,0,0,.65);
-  backdrop-filter:blur(12px);
-  -webkit-backdrop-filter:blur(12px);
-  padding:16px;
-  animation:fadeIn .25s ease;
-}
-.dl-card{
-  width:100%;
-  max-width:440px;
-  padding:24px;
-  border-radius:24px;
-  border:1px solid rgba(255,255,255,0.08);
-  background:rgba(22,22,30,0.85);
-  backdrop-filter:blur(32px);
-  -webkit-backdrop-filter:blur(32px);
-  box-shadow:0 24px 64px rgba(0,0,0,0.65), 0 0 0 1px rgba(255,255,255,0.04) inset;
-  animation:scaleUp .3s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-@keyframes scaleUp{from{transform:scale(.95);opacity:0}to{transform:none;opacity:1}}
-.dl-card .dl-icon{font-size:32px;margin-bottom:12px}
-.dl-card .dl-title{font-size:16px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff}
-.dl-card .dl-subtitle{font-size:12px;color:var(--muted);margin-top:4px}
-.dl-card .progress-bar{margin-top:18px;height:8px}
-.dl-card .dl-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:18px;text-align:center}
-.dl-card .dl-stat-val{font-size:14px;font-weight:800;color:#fff}
-.dl-card .dl-stat-label{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-top:2px}
-.dl-card .dl-actions{display:flex;gap:8px;margin-top:20px}
-.dl-card .dl-cancel{
-  flex:1;padding:12px;border-radius:var(--radius-sm);
-  font-size:13px;font-weight:600;
-  border:1px solid var(--border);color:var(--muted);
-  min-height:44px;
-}
-.dl-card .dl-cancel:hover{border-color:var(--danger);color:var(--danger);background:rgba(248,113,113,0.06)}
-.dl-card .dl-done-btn{
-  flex:1;padding:12px;border-radius:var(--radius-sm);
-  font-size:13px;font-weight:700;
-  background:var(--success);color:#000;
-  min-height:44px;display:none;
-}
-/* Large file download card */
-.dl-card.large-file .dl-preparing{
-  display:flex;flex-direction:column;align-items:center;gap:12px;
-  margin-top:20px;
-}
-.dl-card.large-file .dl-preparing .dl-spinner{
-  width:36px;height:36px;
-  border:3px solid rgba(255,255,255,0.08);
-  border-top-color:var(--primary);
-  border-radius:50%;animation:spin .7s linear infinite;
-}
-.dl-card.large-file .dl-hint{
-  font-size:12px;color:var(--muted);text-align:center;
-  line-height:1.5;margin-top:8px;
-  padding:10px 14px;border-radius:var(--radius-sm);
-  background:rgba(129,140,248,0.05);border:1px solid rgba(129,140,248,0.1);
-}
+/* Stats Grid */
+.stats-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.stat-item { background:var(--card2); border-radius:var(--radius-sm); padding:12px; text-align:center; }
+.stat-value { font-size:18px; font-weight:800; color:var(--text); }
+.stat-label { font-size:10px; color:var(--text2); margin-top:2px; text-transform:uppercase; letter-spacing:.5px; }
 
-/* Settings */
-.settings-group{border-radius:var(--radius);border:1px solid var(--border);background:rgba(22,22,30,0.5);overflow:hidden;margin-bottom:16px;backdrop-filter:blur(8px)}
-.settings-row{display:flex;align-items:center;gap:12px;padding:15px 18px;min-height:52px}
-.settings-row+.settings-row{border-top:1px solid var(--border)}
-.settings-row .label{flex:1;font-size:14px;font-weight:600}
-.settings-row .val{font-size:13px;color:var(--primary);font-family:'SF Mono',ui-monospace,monospace}
-.section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:24px 0 10px;padding-left:4px}
+/* File List */
+.file-item { display:flex; align-items:center; gap:12px; padding:12px; background:var(--card); border:1px solid var(--border); border-radius:var(--radius-sm); margin-bottom:6px; cursor:pointer; transition:background .15s, border-color .15s; min-height:56px; position:relative; }
+.file-item:active { background:var(--card2); }
+.file-item.selected { background:var(--primary-dim); border-color:var(--primary); }
+.file-icon { width:40px; height:40px; display:flex; align-items:center; justify-content:center; font-size:24px; flex-shrink:0; border-radius:6px; overflow:hidden; background:var(--card2); }
+.file-icon img { width:100%; height:100%; object-fit:cover; }
+.file-info { flex:1; min-width:0; }
+.file-name { font-size:13px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.file-meta { font-size:11px; color:var(--text2); margin-top:2px; }
+.file-check { width:22px; height:22px; border-radius:6px; border:2px solid var(--border); display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:14px; transition:all .15s; }
+.file-item.selected .file-check { background:var(--primary); border-color:var(--primary); color:white; }
+.file-actions { display:flex; gap:6px; flex-shrink:0; }
+.file-actions button { width:36px; height:36px; border-radius:var(--radius-sm); display:flex; align-items:center; justify-content:center; font-size:16px; transition:background .15s; }
+.btn-download { background:var(--primary-dim); color:var(--primary); }
+.btn-download:active { background:var(--primary); color:white; }
+.btn-delete { background:rgba(248,113,113,0.12); color:var(--error); }
+.btn-delete:active { background:var(--error); color:white; }
+
+/* Breadcrumb */
+.breadcrumb { display:flex; align-items:center; gap:6px; padding:8px 0; flex-wrap:wrap; margin-bottom:8px; }
+.breadcrumb button { background:none; color:var(--text2); font-size:12px; font-weight:600; padding:4px 8px; border-radius:6px; transition:all .15s; min-height:32px; }
+.breadcrumb button:hover, .breadcrumb button:active { color:var(--primary); background:var(--primary-dim); }
+.breadcrumb .sep { color:var(--border); font-size:12px; }
+.back-btn { background:var(--card) !important; border:1px solid var(--border) !important; color:var(--text) !important; padding:6px 12px !important; border-radius:var(--radius-sm) !important; font-size:13px !important; font-weight:700 !important; min-height:36px !important; }
+.file-count { font-size:11px; color:var(--text2); margin-bottom:10px; }
+
+/* Skeleton */
+.skeleton { background:linear-gradient(90deg, var(--card) 25%, var(--card2) 50%, var(--card) 75%); background-size:200% 100%; animation:shimmer 1.5s infinite; border-radius:var(--radius-sm); }
+@keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+.skel-item { height:56px; margin-bottom:6px; }
+
+/* Empty State */
+.empty-state { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:40px 20px; text-align:center; }
+.empty-icon { font-size:48px; margin-bottom:12px; opacity:0.5; }
+.empty-title { font-size:15px; font-weight:700; color:var(--text); margin-bottom:4px; }
+.empty-desc { font-size:12px; color:var(--text2); }
+
+/* Upload Zone */
+.upload-zone { border:2px dashed var(--border); border-radius:var(--radius); padding:30px; text-align:center; transition:all .2s; cursor:pointer; margin-bottom:12px; }
+.upload-zone.dragover { border-color:var(--primary); background:var(--primary-dim); }
+.upload-zone-icon { font-size:36px; margin-bottom:8px; }
+.upload-zone-text { font-size:13px; color:var(--text2); }
+.upload-zone-text strong { color:var(--primary); }
+
+/* Upload Queue */
+.upload-queue { margin-bottom:12px; }
+.upload-q-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+.upload-q-title { font-size:13px; font-weight:700; }
+.upload-q-clear { background:none; color:var(--error); font-size:11px; font-weight:700; padding:4px 8px; border-radius:6px; }
+.uq-item { display:flex; align-items:center; gap:10px; padding:8px 10px; background:var(--card); border:1px solid var(--border); border-radius:var(--radius-sm); margin-bottom:4px; }
+.uq-icon { font-size:18px; width:28px; text-align:center; }
+.uq-info { flex:1; min-width:0; }
+.uq-name { font-size:12px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.uq-size { font-size:10px; color:var(--text2); }
+.uq-remove { background:none; color:var(--error); font-size:14px; width:28px; height:28px; display:flex; align-items:center; justify-content:center; border-radius:6px; }
+.uq-progress { height:3px; background:var(--border); border-radius:2px; margin-top:4px; overflow:hidden; }
+.uq-progress-bar { height:100%; background:var(--primary); border-radius:2px; transition:width .3s; }
+.uq-done .uq-progress-bar { background:var(--success); }
+
+/* Overall Upload Progress */
+.upload-progress { margin-bottom:12px; }
+.up-bar { height:6px; background:var(--border); border-radius:4px; overflow:hidden; margin-top:6px; }
+.up-bar-fill { height:100%; background:linear-gradient(90deg,var(--primary),#a78bfa); border-radius:4px; transition:width .3s; }
+.up-status { font-size:12px; color:var(--text2); display:flex; justify-content:space-between; }
+
+/* Upload Button */
+.upload-btn { width:100%; padding:14px; background:var(--primary); color:white; font-size:14px; font-weight:700; border-radius:var(--radius-sm); transition:opacity .15s; }
+.upload-btn:disabled { opacity:0.4; }
+
+/* Download Overlay */
+.dl-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:200; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(6px); }
+.dl-card { background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:24px; width:min(340px,90vw); text-align:center; }
+.dl-icon { font-size:48px; margin-bottom:12px; }
+.dl-title { font-size:15px; font-weight:700; margin-bottom:4px; }
+.dl-subtitle { font-size:12px; color:var(--text2); margin-bottom:16px; word-break:break-all; }
+.dl-progress { height:6px; background:var(--border); border-radius:4px; overflow:hidden; margin-bottom:10px; }
+.dl-progress-bar { height:100%; background:linear-gradient(90deg,var(--primary),#a78bfa); border-radius:4px; transition:width .2s; }
+.dl-stats { display:flex; justify-content:space-between; font-size:11px; color:var(--text2); margin-bottom:14px; }
+.dl-cancel { padding:10px 24px; background:var(--border); color:var(--text); font-size:13px; font-weight:600; border-radius:var(--radius-sm); }
+.dl-done .dl-icon { color:var(--success); }
+
+/* Preview Overlay */
+.preview-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.92); z-index:250; display:flex; flex-direction:column; align-items:center; justify-content:center; backdrop-filter:blur(8px); }
+.preview-close { position:absolute; top:12px; right:16px; background:rgba(255,255,255,0.1); color:white; width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:20px; z-index:260; }
+.preview-close:active { background:rgba(255,255,255,0.25); }
+.preview-actions { position:absolute; bottom:max(20px,env(safe-area-inset-bottom)); display:flex; gap:10px; z-index:260; }
+.preview-actions button { padding:10px 20px; border-radius:var(--radius-sm); font-size:13px; font-weight:700; }
+.preview-dl-btn { background:var(--primary); color:white; }
+.preview-img { max-width:95vw; max-height:80vh; object-fit:contain; border-radius:8px; }
+.preview-media { max-width:95vw; max-height:70vh; border-radius:8px; outline:none; }
+
+/* Multi-select bar */
+.select-bar { position:fixed; bottom:calc(76px + env(safe-area-inset-bottom, 0px)); left:8px; right:8px; background:var(--card); border:1px solid var(--primary); border-radius:var(--radius); padding:12px 14px; z-index:150; display:flex; align-items:center; gap:8px; box-shadow:0 -4px 24px rgba(0,0,0,0.6), 0 0 0 1px rgba(129,140,248,0.2); animation:slideUp .25s cubic-bezier(.4,0,.2,1); }
+@keyframes slideUp { from{transform:translateY(20px);opacity:0} to{transform:translateY(0);opacity:1} }
+.select-bar .sel-count { flex:1; font-size:13px; font-weight:700; white-space:nowrap; }
+.select-bar button { padding:8px 14px; border-radius:var(--radius-sm); font-size:12px; font-weight:700; white-space:nowrap; min-height:36px; }
+.sel-zip-btn { background:var(--primary); color:white; }
+.sel-all-btn { background:var(--card2); color:var(--text2); border:1px solid var(--border); }
+.sel-cancel-btn { background:var(--card2); color:var(--error); border:1px solid var(--border); }
 
 /* Toast */
-.toast-wrap{position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:999;display:flex;flex-direction:column;gap:6px;pointer-events:none;width:max-content;max-width:90vw}
-.toast{
-  padding:12px 20px;
-  border-radius:12px;
-  background:rgba(30,30,42,0.9);
-  backdrop-filter:blur(16px);
-  -webkit-backdrop-filter:blur(16px);
-  border:1px solid rgba(255,255,255,0.06);
-  font-size:13px;
-  font-weight:600;
-  animation:toastIn .3s cubic-bezier(0.34, 1.56, 0.64, 1),toastOut .3s ease 2.7s forwards;
-  pointer-events:auto;
-  box-shadow:0 12px 32px rgba(0,0,0,0.5);
-  display:flex;align-items:center;gap:8px;
-}
-.toast.success{border-color:rgba(74,222,128,0.2)}
-.toast.error{border-color:rgba(248,113,113,0.2)}
-@keyframes toastIn{from{opacity:0;transform:translateY(-16px)}to{opacity:1;transform:none}}
-@keyframes toastOut{to{opacity:0;transform:translateY(-10px)}}
+.toast { position:fixed; top:16px; left:50%; transform:translateX(-50%) translateY(-100px); background:var(--card); border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px 18px; font-size:13px; font-weight:600; z-index:300; transition:transform .3s cubic-bezier(.4,0,.2,1); max-width:90vw; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.toast.show { transform:translateX(-50%) translateY(0); }
+.toast.success { border-left:3px solid var(--success); }
+.toast.error { border-left:3px solid var(--error); }
 
-.loader{display:flex;justify-content:center;padding:40px}.spinner{width:28px;height:28px;border:3px solid rgba(255,255,255,0.05);border-top-color:var(--primary);border-radius:50%;animation:spin .6s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-.page-title{font-size:24px;font-weight:800;margin-bottom:20px;letter-spacing:-.02em}
+/* Retry */
+.retry-btn { margin-top:12px; padding:10px 24px; background:var(--primary); color:white; font-size:13px; font-weight:700; border-radius:var(--radius-sm); }
 
-/* Retry button */
-.retry-btn{
-  display:inline-flex;align-items:center;gap:6px;
-  margin-top:12px;padding:10px 20px;
-  border-radius:var(--radius-sm);
-  background:rgba(129,140,248,0.1);color:var(--primary);
-  font-size:13px;font-weight:600;
-  border:1px solid rgba(129,140,248,0.15);
-  min-height:44px;
-}
-.retry-btn:hover{background:rgba(129,140,248,0.18)}
-
-/* File count badge */
-.file-count{
-  font-size:12px;color:var(--muted);font-weight:500;
-  margin-bottom:12px;padding:0 2px;
-}
+/* Misc */
+.hidden { display:none !important; }
 </style>
 </head>
 <body>
 
-<div class="toast-wrap" id="toasts"></div>
+<!-- Toast -->
+<div id="toast" class="toast"></div>
 
-<div class="app">
-  <!-- HOME -->
-  <div class="page active" id="page-home">
-    <div style="display:flex;flex-direction:column;align-items:center;text-align:center">
-      <div class="badge"><span class="dot"></span> Server live</div>
-      <h1 class="hero-title">LAN Beam</h1>
-      <p class="hero-sub">Share files between any devices on your Wi-Fi — no internet needed</p>
-      <div class="qr-wrap"><div class="qr-pulse"></div><img id="qr-img" alt="QR Code"></div>
-      <button class="url-btn" id="url-btn" onclick="copyUrl()">
-        <span id="url-text">loading…</span>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-      </button>
-      <div class="stats-row">
-        <div class="stat"><div class="stat-val" id="s-files">—</div><div class="stat-label">Files</div></div>
-        <div class="stat"><div class="stat-val" id="s-size">—</div><div class="stat-label">Shared</div></div>
-        <div class="stat"><div class="stat-val" id="s-devices">—</div><div class="stat-label">Devices</div></div>
-      </div>
-      <div class="action-grid">
-        <button class="action-btn primary" onclick="go('files')">📥 Receive Files</button>
-        <button class="action-btn secondary" onclick="go('send')">📤 Send Files</button>
-      </div>
-      <div class="how-it-works">
-        <h3>📡 How it works</h3>
-        <div class="step"><span class="step-num">1</span> All devices connect to the same Wi-Fi</div>
-        <div class="step"><span class="step-num">2</span> One device runs the server (this device)</div>
-        <div class="step"><span class="step-num">3</span> Other devices open the URL or scan QR</div>
-        <div class="step"><span class="step-num">4</span> <strong style="color:var(--fg)">Receive</strong> = download files from server</div>
-        <div class="step"><span class="step-num">5</span> <strong style="color:var(--fg)">Send</strong> = upload files to server for others</div>
-      </div>
+<!-- Pages -->
+<div id="page-home" class="page active">
+  <div class="card">
+    <div class="card-title">📡 Device Info</div>
+    <div id="home-device" style="font-size:13px;color:var(--text2);margin-bottom:12px">Loading...</div>
+    <div class="url-bar" id="url-bar" onclick="copyUrl()">
+      <span class="url-text" id="url-text">http://...</span>
+      <span class="copy-icon" id="copy-icon">📋</span>
     </div>
   </div>
-
-  <!-- RECEIVE / FILES -->
-  <div class="page" id="page-files">
-    <h2 class="page-title">📥 Receive Files</h2>
-    <div class="toolbar">
-      <div class="search-box">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-        <input type="text" placeholder="Search files…" id="search-input" oninput="renderFiles()">
-      </div>
-    </div>
-    <div class="breadcrumb" id="breadcrumb"></div>
-    <div class="file-count" id="file-count"></div>
-    <div id="file-list"></div>
-  </div>
-
-  <!-- SEND / UPLOAD -->
-  <div class="page" id="page-send">
-    <h2 class="page-title">📤 Send Files</h2>
-    <p style="font-size:13px;color:var(--muted);margin:-8px 0 16px">Files you send are saved on the server — other devices can download them from <strong style="color:var(--fg)">Receive</strong></p>
-    <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-pick').click()">
-      <h3>📤 Tap to select files</h3>
-      <p>or drag & drop files here</p>
-    </div>
-    <input type="file" id="file-pick" multiple hidden>
-    <div id="upload-summary-wrap"></div>
-    <div class="upload-list" id="upload-list"></div>
-    <div id="upload-total-wrap"></div>
-    <button class="upload-btn" id="upload-btn" disabled onclick="startUpload()">Send Files</button>
-  </div>
-
-  <!-- RECEIVED (uploaded files on server) -->
-  <div class="page" id="page-received">
-    <h2 class="page-title">📦 Received Files</h2>
-    <div class="storage-bar" id="storage-bar">
-      <span>💾 Storage: <strong id="recv-size">—</strong> (<span id="recv-count">0</span> files)</span>
-      <button class="clear-btn" onclick="clearUploads()">Clear All</button>
-    </div>
-    <div id="received-list"></div>
-  </div>
-
-  <!-- SETTINGS -->
-  <div class="page" id="page-settings">
-    <h2 class="page-title">Settings</h2>
-    <div class="section-title">Server Info</div>
-    <div class="settings-group">
-      <div class="settings-row"><span class="label">IP Address</span><span class="val" id="set-ip">—</span></div>
-      <div class="settings-row"><span class="label">Port</span><span class="val" id="set-port">—</span></div>
-      <div class="settings-row"><span class="label">Hostname</span><span class="val" id="set-host">—</span></div>
-      <div class="settings-row"><span class="label">Shared Path</span><span class="val" id="set-path" style="font-size:11px;word-break:break-all">—</span></div>
-      <div class="settings-row"><span class="label">Connection</span><span class="val" id="set-conn">—</span></div>
-    </div>
-    <div class="section-title">About</div>
-    <div class="settings-group">
-      <div class="settings-row"><span class="label">All transfers are local</span><span class="val">No internet</span></div>
-      <div class="settings-row"><span class="label">Sent files use real disk space</span><span class="val">Not metadata</span></div>
-    </div>
+  <div class="qr-wrap"><img id="qr-img" src="/api/qr" alt="QR Code"></div>
+  <div class="stats-grid" id="stats-grid">
+    <div class="stat-item"><div class="stat-value" id="stat-files">-</div><div class="stat-label">Files Shared</div></div>
+    <div class="stat-item"><div class="stat-value" id="stat-size">-</div><div class="stat-label">Total Size</div></div>
+    <div class="stat-item"><div class="stat-value" id="stat-hostname">-</div><div class="stat-label">Hostname</div></div>
+    <div class="stat-item"><div class="stat-value" id="stat-conn">Wi-Fi</div><div class="stat-label">Connection</div></div>
   </div>
 </div>
 
+<div id="page-send" class="page">
+  <div class="breadcrumb" id="breadcrumb"></div>
+  <div class="file-count" id="send-count"></div>
+  <div id="send-list"></div>
+</div>
+
+<div id="page-receive" class="page">
+  <div class="card-title" style="margin-bottom:12px">📥 Upload Files</div>
+  <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
+    <div class="upload-zone-icon">📁</div>
+    <div class="upload-zone-text">Tap to select or <strong>drag files here</strong></div>
+  </div>
+  <input type="file" id="file-input" multiple style="display:none">
+  <div id="upload-queue-wrap" class="hidden"></div>
+  <div id="upload-progress-wrap" class="hidden"></div>
+  <button id="upload-start-btn" class="upload-btn hidden" onclick="startUpload()">Upload Files</button>
+  <div style="margin-top:16px">
+    <div class="card-title">📦 Uploaded Files</div>
+    <div id="receive-list"></div>
+  </div>
+</div>
+
+<!-- Bottom Nav -->
 <nav class="nav">
-  <button class="nav-btn active" data-page="home" onclick="go('home')">
-    <span class="conn-dot" id="conn-dot"></span>
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .7-1.5l7-5.6a2 2 0 0 1 2.6 0l7 5.6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
-    Home
+  <button class="nav-btn active" data-page="home" onclick="switchPage('home')">
+    <span class="icon">🏠</span>Home
+    <span class="nav-dot offline" id="conn-dot"></span>
   </button>
-  <button class="nav-btn" data-page="files" onclick="go('files')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-    Receive
+  <button class="nav-btn" data-page="send" onclick="switchPage('send')">
+    <span class="icon">📤</span>Send
   </button>
-  <button class="nav-btn" data-page="send" onclick="go('send')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-    Send
-  </button>
-  <button class="nav-btn" data-page="received" onclick="go('received')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-6"/><rect x="2" y="4" width="20" height="8" rx="2"/><path d="M12 12v4"/><path d="m8 16 4-4 4 4"/></svg>
-    Received
-  </button>
-  <button class="nav-btn" data-page="settings" onclick="go('settings')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/></svg>
-    Settings
+  <button class="nav-btn" data-page="receive" onclick="switchPage('receive')">
+    <span class="icon">📥</span>Receive
   </button>
 </nav>
 
+<!-- Download Overlay -->
+<div id="dl-overlay" class="dl-overlay hidden"></div>
+
+<!-- Preview Overlay -->
+<div id="preview-overlay" class="preview-overlay hidden"></div>
+
+<!-- Multi-select Bar -->
+<div id="select-bar" class="select-bar hidden">
+  <span class="sel-count" id="sel-count">0 selected</span>
+  <button class="sel-all-btn" id="sel-all-btn" onclick="toggleSelectAll()">Select All</button>
+  <button class="sel-zip-btn" onclick="downloadSelectedZip()">📦 ZIP</button>
+  <button class="sel-cancel-btn" onclick="exitSelectMode()">✕</button>
+</div>
+
 <script>
 // ─── State ───
-let info=null, currentPath="/", files=[], uploadQueue=[], isDownloading=false, isUploading=false;
-let filesCache={}, filesCacheTime={};
-const CACHE_TTL=3000; // 3 seconds
-const POLL_INTERVAL=15000; // 15 seconds (was 5s)
-const token=localStorage.getItem("lanbeam_token")||"";
+let currentPage = localStorage.getItem('lb_page') || 'home';
+let currentPath = '/';
+let serverInfo = {};
+let fileCache = {};
+const FILE_CACHE_TTL = 3000;
+let uploadQueue = [];
+let uploading = false;
+let downloadAbort = null;
+let refreshTimer = null;
+const POLL_WS = 60000;
+const POLL_FALLBACK = 15000;
 
-function af(url,opts={}){if(token)opts.headers={...(opts.headers||{}),Authorization:"Bearer "+token};return fetch(url,opts)}
+// Multi-select
+let selectMode = false;
+let selectedFiles = new Set();
 
-// ─── Navigation with page memory ───
-function go(page){
-  document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
-  const pageEl=document.getElementById("page-"+page);
-  pageEl.classList.add("active");
-  document.querySelectorAll(".nav-btn").forEach(b=>b.classList.toggle("active",b.dataset.page===page));
-  // Smooth scroll to top
-  window.scrollTo({top:0,behavior:'smooth'});
-  // Save to localStorage
-  try{localStorage.setItem("lanbeam_last_page",page)}catch(e){}
-  if(page==="files")loadFiles();
-  if(page==="received")loadReceived();
-  if(page==="settings"&&info)fillSettings();
-}
-
-// Restore last page on load
-function restoreLastPage(){
-  try{
-    const last=localStorage.getItem("lanbeam_last_page");
-    if(last && document.getElementById("page-"+last)){go(last)}
-  }catch(e){}
-}
-
-// ─── Toast ───
-function toast(msg, type=''){
-  const el=document.createElement("div");
-  el.className="toast"+(type?" "+type:"");
-  el.textContent=msg;
-  document.getElementById("toasts").appendChild(el);
-  setTimeout(()=>el.remove(),3200);
-}
-
-// ─── Formatters ───
-function fmt(b){if(b==null)return"—";const u=["B","KB","MB","GB","TB"];let i=0,n=b;while(n>=1024&&i<u.length-1){n/=1024;i++}return(n>=100||i===0?Math.round(n):n.toFixed(1))+" "+u[i]}
-function fmtSpeed(bps){if(bps<1024)return Math.round(bps)+" B/s";if(bps<1048576)return(bps/1024).toFixed(1)+" KB/s";return(bps/1048576).toFixed(1)+" MB/s"}
-function fmtTime(s){if(!s||!isFinite(s))return"—";if(s<60)return Math.ceil(s)+"s";if(s<3600)return Math.floor(s/60)+"m "+Math.ceil(s%60)+"s";return Math.floor(s/3600)+"h "+Math.floor((s%3600)/60)+"m"}
-
-function copyUrl(){
-  if(!info)return;
-  const btn=document.getElementById("url-btn");
-  if(navigator.clipboard){
-    navigator.clipboard.writeText(info.url);
-  } else {
-    // Fallback
-    const t=document.createElement("textarea");t.value=info.url;document.body.appendChild(t);t.select();document.execCommand("copy");document.body.removeChild(t);
-  }
-  btn.classList.add("copied");
-  const span=document.getElementById("url-text");
-  const orig=span.textContent;
-  span.textContent="✓ Copied!";
-  toast("URL copied!","success");
-  setTimeout(()=>{btn.classList.remove("copied");span.textContent=orig},1500);
-}
-
-const icons={video:"🎬",audio:"🎵",image:"🖼️",folder:"📁",pdf:"📄",archive:"📦",apk:"📱",doc:"📃"};
-function getFileIcon(type){return icons[type]||"📃"}
-function getFileTypeFromName(name){
-  const ext=name.split('.').pop().toLowerCase();
-  const map={
-    mp4:'video',mkv:'video',mov:'video',avi:'video',webm:'video',wmv:'video',flv:'video',m4v:'video',ts:'video',
-    mp3:'audio',flac:'audio',wav:'audio',m4a:'audio',aac:'audio',ogg:'audio',wma:'audio',opus:'audio',
-    jpg:'image',jpeg:'image',png:'image',gif:'image',webp:'image',svg:'image',bmp:'image',ico:'image',heic:'image',heif:'image',tiff:'image',
-    pdf:'pdf',
-    zip:'archive',tar:'archive',gz:'archive',rar:'archive','7z':'archive',bz2:'archive',xz:'archive',tgz:'archive',
-    apk:'apk'
-  };
-  return map[ext]||'doc';
-}
-
-// ─── Connection status ───
-let connOk=true;
-function updateConnDot(ok){
-  connOk=ok;
-  const dot=document.getElementById("conn-dot");
-  if(dot)dot.classList.toggle("offline",!ok);
-}
-
-// ─── Load Info ───
-async function loadInfo(){
-  try{
-    const r=await af("/api/info");
-    if(r.status===401){showAuth();return}
-    info=await r.json();
-    document.getElementById("qr-img").src="/api/qr";
-    document.getElementById("url-text").textContent=info.url;
-    document.getElementById("s-files").textContent=info.filesShared;
-    document.getElementById("s-size").textContent=fmt(info.totalSize);
-    document.getElementById("s-devices").textContent=info.devicesConnected;
-    fillSettings();
-    updateConnDot(true);
-  }catch(e){console.error(e);updateConnDot(false)}
-}
-
-function fillSettings(){
-  if(!info)return;
-  document.getElementById("set-ip").textContent=info.ip;
-  document.getElementById("set-port").textContent=info.port;
-  document.getElementById("set-host").textContent=info.hostname;
-  document.getElementById("set-path").textContent=info.sharedPath;
-  document.getElementById("set-conn").textContent=info.connectionType;
-}
-
-function showAuth(){
-  document.querySelector(".app").innerHTML=`
-    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80dvh;text-align:center">
-      <div style="width:72px;height:72px;border-radius:18px;background:rgba(129,140,248,.15);display:grid;place-items:center;font-size:32px;margin-bottom:20px">🔒</div>
-      <h1 style="font-size:24px;font-weight:800">LAN Beam</h1>
-      <p style="font-size:14px;color:var(--muted);margin-top:4px">Enter PIN to access files</p>
-      <input id="pin-input" type="password" inputmode="numeric" maxlength="8" placeholder="••••"
-        style="width:200px;margin-top:24px;padding:14px;text-align:center;font-size:24px;letter-spacing:.4em;border-radius:var(--radius);border:1px solid var(--border);background:var(--card)"
-        onkeydown="if(event.key==='Enter')doAuth()">
-      <p id="pin-err" style="color:var(--danger);font-size:13px;margin-top:8px;min-height:20px"></p>
-      <button onclick="doAuth()" style="margin-top:8px;padding:12px 32px;border-radius:var(--radius);background:var(--primary);color:#fff;font-weight:600;font-size:14px;box-shadow:0 4px 16px rgba(129,140,248,.3);min-height:48px">Unlock</button>
-    </div>`;
-  setTimeout(()=>document.getElementById("pin-input")?.focus(),100);
-}
-async function doAuth(){
-  const pin=document.getElementById("pin-input").value;
-  const r=await fetch("/api/auth",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin})});
-  if(r.ok){localStorage.setItem("lanbeam_token",pin);location.reload()}
-  else{document.getElementById("pin-err").textContent="Wrong PIN";document.getElementById("pin-input").value=""}
-}
-
-// ─── Skeleton loaders ───
-function showSkeleton(el, count=5){
-  let html='<div class="skeleton-list">';
-  for(let i=0;i<count;i++){
-    html+=`<div class="skeleton-item">
-      <div class="skeleton-icon"></div>
-      <div class="skeleton-info">
-        <div class="skeleton-text w60"></div>
-        <div class="skeleton-text w40" style="margin-top:4px;height:10px"></div>
-      </div>
-    </div>`;
-  }
-  html+='</div>';
-  el.innerHTML=html;
-}
-
-// ─── Files ───
-async function loadFiles(){
-  const el=document.getElementById("file-list");
-  const cacheKey=currentPath;
-  const now=Date.now();
-
-  // Use cache if fresh
-  if(filesCache[cacheKey] && (now - filesCacheTime[cacheKey]) < CACHE_TTL){
-    files=filesCache[cacheKey];
-    renderFiles();
-    return;
-  }
-
-  showSkeleton(el);
-  try{
-    const r=await af("/api/files?path="+encodeURIComponent(currentPath));
-    if(!r.ok) throw new Error(r.statusText);
-    files=await r.json();
-    filesCache[cacheKey]=files;
-    filesCacheTime[cacheKey]=now;
-    renderFiles();
-    updateConnDot(true);
-  }catch(e){
-    updateConnDot(false);
-    el.innerHTML=`<div class="empty">
-      <span class="empty-icon">⚠️</span>
-      <div class="empty-title">Failed to load files</div>
-      <div class="empty-sub">${e.message||'Network error'}</div>
-      <button class="retry-btn" onclick="loadFiles()">🔄 Retry</button>
-    </div>`;
-  }
-}
-
-function renderFiles(){
-  const q=(document.getElementById("search-input")?.value||"").toLowerCase();
-  const visible=q?files.filter(f=>f.name.toLowerCase().includes(q)):files;
-  const parts=currentPath==="/"?[]:currentPath.split("/").filter(Boolean);
-
-  // Breadcrumb with back button
-  let bc='';
-  if(parts.length>0){
-    const parentPath=parts.length<=1?"/":"/"+parts.slice(0,-1).join("/");
-    bc+=`<span class="back-btn" onclick="navTo('${parentPath}')">← Back</span>`;
-  }
-  bc+=`<span onclick="navTo('/')">Home</span>`;
-  let path="";
-  for(const p of parts){path+="/"+p;bc+=`<span class="sep">/</span><span onclick="navTo('${path}')">${p}</span>`}
-  document.getElementById("breadcrumb").innerHTML=bc;
-
-  // File count
-  const countEl=document.getElementById("file-count");
-  if(visible.length>0){
-    const folders=visible.filter(f=>f.type==='folder').length;
-    const fileCount=visible.length-folders;
-    let countText=[];
-    if(folders>0) countText.push(folders+' folder'+(folders>1?'s':''));
-    if(fileCount>0) countText.push(fileCount+' file'+(fileCount>1?'s':''));
-    countEl.textContent=countText.join(', ');
-  } else {
-    countEl.textContent='';
-  }
-
-  const el=document.getElementById("file-list");
-  if(!visible.length){
-    el.innerHTML=`<div class="empty">
-      <span class="empty-icon">${q?'🔍':'📂'}</span>
-      <div class="empty-title">${q?"No matching files":"This folder is empty"}</div>
-      <div class="empty-sub">${q?"Try a different search term":"Files shared from the server device will appear here"}</div>
-    </div>`;
-    return;
-  }
-  visible.sort((a,b)=>{if(a.type==="folder"&&b.type!=="folder")return-1;if(a.type!=="folder"&&b.type==="folder")return 1;return a.name.localeCompare(b.name)});
-  el.innerHTML=visible.map(f=>{
-    const icon=icons[f.type]||"📃";
-    const meta=f.type==="folder"?fmt(f.size)+" · "+(f.items??0)+" items":fmt(f.size)+" · "+f.modified;
-    const fullPath=(currentPath==="/"?"":currentPath)+"/"+f.name;
-    const esc=s=>s.replace(/'/g,"\\'").replace(/\\/g,"\\\\");
-    const click=f.type==="folder"?`onclick="navTo('${esc(fullPath)}')"`:
-      `onclick="downloadFile('${esc(fullPath)}','${esc(f.name)}',${f.size||0})"`;
-    const dlBtn=f.type!=="folder"?
-      `<button class="dl-btn" onclick="event.stopPropagation();downloadFile('${esc(fullPath)}','${esc(f.name)}',${f.size||0})"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>`:
-      '<span class="dl-btn" style="opacity:.3">→</span>';
-    return`<div class="file-item" ${click}><div class="file-icon ${f.type}">${icon}</div><div class="file-info"><div class="file-name">${f.name}</div><div class="file-meta">${meta}</div></div>${dlBtn}</div>`;
-  }).join("");
-}
-function navTo(p){currentPath=p;document.getElementById("search-input").value="";loadFiles()}
-
-// ─── Download (PERFORMANCE FIXED) ───
-let activeDownloadController=null;
-
-function downloadFile(filePath, fileName, totalSize){
-  const STREAM_THRESHOLD=100*1024*1024; // 100MB
-  if(totalSize > STREAM_THRESHOLD){
-    downloadLargeFile(filePath, fileName, totalSize);
-  } else {
-    downloadWithProgress(filePath, fileName, totalSize);
-  }
-}
-
-// Large files (>100MB): Direct browser download with nice overlay
-function downloadLargeFile(filePath, fileName, totalSize){
-  const dlUrl="/api/download?path="+encodeURIComponent(filePath)+(token?"&token="+encodeURIComponent(token):"");
-  const overlay=document.createElement("div");overlay.className="dl-overlay";
-  const fileType=getFileTypeFromName(fileName);
-  const icon=getFileIcon(fileType);
-  overlay.innerHTML=`<div class="dl-card large-file">
-    <div class="dl-icon">${icon}</div>
-    <div class="dl-title">${fileName}</div>
-    <div class="dl-subtitle">${fmt(totalSize)} — Starting download…</div>
-    <div class="dl-preparing">
-      <div class="dl-spinner"></div>
-      <div style="font-size:13px;color:var(--fg);font-weight:600">Preparing download…</div>
-    </div>
-    <div class="dl-hint">
-      💡 Large file — your browser will handle the download.<br>
-      Check your notification bar or downloads folder for progress.
-    </div>
-    <div class="dl-actions">
-      <button class="dl-cancel" onclick="this.closest('.dl-overlay').remove()">Close</button>
-    </div>
-  </div>`;
-  document.body.appendChild(overlay);
-
-  // Trigger download via anchor
-  const a=document.createElement("a");a.href=dlUrl;a.download=fileName;
-  document.body.appendChild(a);a.click();document.body.removeChild(a);
-
-  // Update overlay after a moment
-  setTimeout(()=>{
-    const sub=overlay.querySelector(".dl-subtitle");
-    const prep=overlay.querySelector(".dl-preparing");
-    if(sub)sub.textContent=fmt(totalSize)+" — Download started ✓";
-    if(prep)prep.innerHTML=`<div style="font-size:32px;margin:8px 0">✅</div><div style="font-size:13px;color:var(--success);font-weight:600">Download started!</div>`;
-  },1500);
-
-  toast("Download started: "+fileName,"success");
-}
-
-// Medium files (≤100MB): Streamed download with progress
-async function downloadWithProgress(filePath,fileName,totalSize){
-  if(isDownloading){toast("A download is already in progress","error");return}
-  isDownloading=true;
-  const dlUrl="/api/download?path="+encodeURIComponent(filePath)+(token?"&token="+encodeURIComponent(token):"");
-  const fileType=getFileTypeFromName(fileName);
-  const icon=getFileIcon(fileType);
-
-  const overlay=document.createElement("div");overlay.className="dl-overlay";
-  overlay.innerHTML=`<div class="dl-card">
-    <div class="dl-icon">${icon}</div>
-    <div class="dl-title">⬇️ ${fileName}</div>
-    <div class="dl-subtitle">${fmt(totalSize)} — Downloading…</div>
-    <div class="progress-bar"><div class="progress-fill" id="dl-fill"></div></div>
-    <div class="dl-stats">
-      <div><div class="dl-stat-val" id="dl-pct">0%</div><div class="dl-stat-label">Progress</div></div>
-      <div><div class="dl-stat-val" id="dl-speed">—</div><div class="dl-stat-label">Speed</div></div>
-      <div><div class="dl-stat-val" id="dl-done">0 B</div><div class="dl-stat-label">Downloaded</div></div>
-      <div><div class="dl-stat-val" id="dl-eta">—</div><div class="dl-stat-label">ETA</div></div>
-    </div>
-    <div class="dl-actions">
-      <button class="dl-cancel" id="dl-cancel-btn" onclick="cancelDownload()">Cancel</button>
-      <button class="dl-done-btn" id="dl-done-btn" onclick="this.closest('.dl-overlay').remove()">✓ Done</button>
-    </div>
-  </div>`;
-  document.body.appendChild(overlay);
-  const fill=overlay.querySelector("#dl-fill"),pctEl=overlay.querySelector("#dl-pct"),speedEl=overlay.querySelector("#dl-speed"),doneEl=overlay.querySelector("#dl-done"),etaEl=overlay.querySelector("#dl-eta"),subtitle=overlay.querySelector(".dl-subtitle");
-
-  activeDownloadController=new AbortController();
-  try{
-    const res=await af(dlUrl,{signal:activeDownloadController.signal});
-    if(!res.ok)throw new Error(res.statusText);
-    const cl=parseInt(res.headers.get("content-length")||totalSize||"0");
-    const reader=res.body.getReader();
-    const chunks=[];
-    let recv=0, t0=Date.now(), lastSpeedTime=t0, lastSpeedBytes=0, currentSpeed=0;
-
-    while(true){
-      const{done,value}=await reader.read();
-      if(done)break;
-      chunks.push(value);
-      recv+=value.length;
-      const now=Date.now();
-      const elapsed=(now-lastSpeedTime)/1000;
-
-      // Update speed every 500ms for smoother display
-      if(elapsed>=0.5){
-        currentSpeed=(recv-lastSpeedBytes)/elapsed;
-        lastSpeedTime=now;
-        lastSpeedBytes=recv;
-      } else if(now-t0<500){
-        // First 500ms — use overall
-        const totalElapsed=(now-t0)/1000;
-        if(totalElapsed>0) currentSpeed=recv/totalElapsed;
-      }
-
-      const pct=cl>0?recv/cl*100:0;
-      const rem=currentSpeed>0&&cl>0?(cl-recv)/currentSpeed:0;
-      fill.style.width=pct.toFixed(1)+"%";
-      pctEl.textContent=Math.round(pct)+"%";
-      speedEl.textContent=fmtSpeed(currentSpeed);
-      doneEl.textContent=fmt(recv);
-      etaEl.textContent=fmtTime(rem);
-    }
-
-    // Complete
-    const totalElapsed=(Date.now()-t0)/1000;
-    fill.style.width="100%";fill.style.background="var(--success)";
-    pctEl.textContent="100%";
-    speedEl.textContent=fmtSpeed(recv/(totalElapsed||1));
-    etaEl.textContent="Done!";
-    subtitle.textContent=fmt(recv)+" — Complete ✓";
-    subtitle.style.color="var(--success)";
-
-    // Show done button, hide cancel
-    overlay.querySelector("#dl-cancel-btn").style.display="none";
-    overlay.querySelector("#dl-done-btn").style.display="block";
-
-    // Trigger save
-    const blob=new Blob(chunks);
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement("a");a.href=url;a.download=fileName;
-    document.body.appendChild(a);a.click();document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast("Downloaded: "+fileName,"success");
-  }catch(e){
-    if(e.name==='AbortError'){
-      subtitle.textContent="Download cancelled";
-      fill.style.background="var(--warning)";
-      toast("Download cancelled");
-    } else {
-      subtitle.textContent="Download failed ✗";
-      subtitle.style.color="var(--danger)";
-      fill.style.background="var(--danger)";
-      toast("Failed: "+e.message,"error");
-    }
-    // Show done button to close
-    overlay.querySelector("#dl-cancel-btn").textContent="Close";
-    overlay.querySelector("#dl-cancel-btn").onclick=()=>overlay.remove();
-  } finally {
-    isDownloading=false;
-    activeDownloadController=null;
-  }
-}
-
-function cancelDownload(){
-  if(activeDownloadController){activeDownloadController.abort();activeDownloadController=null}
-}
-
-// ─── Upload with progress ───
-const dropZone=document.getElementById("drop-zone"),filePick=document.getElementById("file-pick");
-dropZone.addEventListener("dragover",e=>{e.preventDefault();dropZone.classList.add("over")});
-dropZone.addEventListener("dragleave",()=>dropZone.classList.remove("over"));
-dropZone.addEventListener("drop",e=>{e.preventDefault();dropZone.classList.remove("over");addFiles(e.dataTransfer.files)});
-filePick.addEventListener("change",()=>{addFiles(filePick.files);filePick.value=""});
-
-function addFiles(fl){
-  for(const f of fl){
-    if(!uploadQueue.find(q=>q.file.name===f.name&&q.file.size===f.size)){
-      uploadQueue.push({file:f,status:"pending",progress:0,speed:0,eta:0});
-    }
-  }
-  renderUploadList();
-}
-
-function removeFromQueue(idx){
-  if(uploadQueue[idx]&&uploadQueue[idx].status!=="uploading"){
-    uploadQueue.splice(idx,1);
-    renderUploadList();
-  }
-}
-
-function clearQueue(){
-  uploadQueue=uploadQueue.filter(q=>q.status==="uploading");
-  renderUploadList();
-}
-
-function renderUploadList(){
-  const el=document.getElementById("upload-list");
-  const summaryWrap=document.getElementById("upload-summary-wrap");
-
-  // Upload summary
-  if(uploadQueue.length>0){
-    const totalSize=uploadQueue.reduce((s,q)=>s+q.file.size,0);
-    const doneCount=uploadQueue.filter(q=>q.status==="done").length;
-    summaryWrap.innerHTML=`<div class="upload-summary">
-      <span><strong>${uploadQueue.length}</strong> file${uploadQueue.length>1?'s':''} · ${fmt(totalSize)}${doneCount>0?' · <span style="color:var(--success)">'+doneCount+' done</span>':''}</span>
-      ${!isUploading?'<span class="clear-queue" onclick="clearQueue()">Clear all</span>':''}
-    </div>`;
-  } else {
-    summaryWrap.innerHTML='';
-  }
-
-  el.innerHTML=uploadQueue.map((q,idx)=>{
-    const sc=q.status==="done"?"done":q.status==="error"?"fail":q.status==="uploading"?"uploading":"";
-    const st=q.status==="done"?"✓ Done":q.status==="error"?"✗ Failed":q.status==="uploading"?Math.round(q.progress)+"%":"Ready";
-    const sp=q.status==="uploading"||q.status==="done";
-    const fileType=getFileTypeFromName(q.file.name);
-    const icon=getFileIcon(fileType);
-    const removable=q.status!=="uploading"&&q.status!=="done";
-    return`<div class="upload-item">
-      ${removable?`<span class="remove-btn" onclick="removeFromQueue(${idx})">✕</span>`:''}
-      <div class="top-row">
-        <span class="u-icon">${icon}</span>
-        <span class="name">${q.file.name}</span>
-        <span class="size">${fmt(q.file.size)}</span>
-        <span class="status ${sc}">${st}</span>
-      </div>
-      ${sp?`<div class="progress-wrap"><div class="progress-bar"><div class="progress-fill" style="width:${q.progress}%;${q.status==="done"?"background:var(--success)":""}"></div></div><div class="progress-stats"><span>${fmt(q.file.size*q.progress/100)} / ${fmt(q.file.size)}</span><span>${q.status==="uploading"?fmtSpeed(q.speed)+" · "+fmtTime(q.eta)+" left":"Complete"}</span></div></div>`:''}
-    </div>`;
-  }).join("");
-
-  // Upload total progress
-  const totalWrap=document.getElementById("upload-total-wrap");
-  if(isUploading){
-    const total=uploadQueue.length;
-    const done=uploadQueue.filter(q=>q.status==="done").length;
-    const current=uploadQueue.findIndex(q=>q.status==="uploading");
-    const pct=total>0?((done+(current>=0?uploadQueue[current].progress/100:0))/total*100):0;
-    totalWrap.innerHTML=`<div class="upload-total-progress">
-      <div class="label">Overall Progress <span>${done}/${total} files</span></div>
-      <div class="progress-bar"><div class="progress-fill" style="width:${pct.toFixed(1)}%"></div></div>
-    </div>`;
-  } else {
-    totalWrap.innerHTML='';
-  }
-
-  document.getElementById("upload-btn").disabled=!uploadQueue.length||uploadQueue.every(q=>q.status==="done")||isUploading;
-  document.getElementById("upload-btn").textContent=isUploading?"Sending…":"Send Files";
-}
-
-async function startUpload(){
-  isUploading=true;
-  document.getElementById("upload-btn").disabled=true;
-  document.getElementById("upload-btn").textContent="Sending…";
-
-  for(const q of uploadQueue){
-    if(q.status==="done")continue;q.status="uploading";q.progress=0;renderUploadList();
-    await new Promise(resolve=>{
-      const xhr=new XMLHttpRequest(),t0=Date.now();let lt=t0,ll=0;
-      xhr.upload.onprogress=e=>{if(!e.lengthComputable)return;const now=Date.now(),re=(now-lt)/1000;q.progress=e.loaded/e.total*100;if(re>=.3){q.speed=(e.loaded-ll)/re;lt=now;ll=e.loaded}else{const el=(now-t0)/1000;if(el>0)q.speed=e.loaded/el}q.eta=q.speed>0?(e.total-e.loaded)/q.speed:0;renderUploadList()};
-      xhr.onload=()=>{q.status=xhr.status>=200&&xhr.status<300?"done":"error";q.progress=q.status==="done"?100:q.progress;renderUploadList();resolve()};
-      xhr.onerror=()=>{q.status="error";renderUploadList();resolve()};
-      const form=new FormData();form.append("file",q.file);form.append("dest","/");
-      xhr.open("POST","/api/upload");if(token)xhr.setRequestHeader("Authorization","Bearer "+token);xhr.send(form);
-    });
-  }
-  isUploading=false;
-  const doneCount=uploadQueue.filter(q=>q.status==="done").length;
-  const failCount=uploadQueue.filter(q=>q.status==="error").length;
-  if(failCount>0){
-    toast(`Sent ${doneCount} file${doneCount>1?'s':''}, ${failCount} failed`,"error");
-  } else {
-    toast(`All ${doneCount} file${doneCount>1?'s':''} sent! ✓`,"success");
-  }
-  renderUploadList();
-  loadInfo();
-  // Invalidate file cache so receive page shows new files
-  filesCache={};filesCacheTime={};
-}
-
-// ─── Received files (uploads on server) ───
-async function loadReceived(){
-  const el=document.getElementById("received-list");
-  showSkeleton(el, 4);
-  try{
-    const[filesRes,sizeRes]=await Promise.all([af("/api/files?path=/uploads"),af("/api/uploads/size")]);
-    const recvFiles=await filesRes.json();
-    const sizeData=await sizeRes.json();
-    document.getElementById("recv-size").textContent=fmt(sizeData.totalSize);
-    document.getElementById("recv-count").textContent=sizeData.count;
-    if(!recvFiles.length){
-      el.innerHTML=`<div class="empty">
-        <span class="empty-icon">📦</span>
-        <div class="empty-title">No received files yet</div>
-        <div class="empty-sub">When someone sends files from another device, they'll appear here.</div>
-      </div>`;
-      return;
-    }
-    el.innerHTML=recvFiles.map(f=>{
-      const icon=icons[f.type]||"📃";
-      const fullPath="/uploads/"+f.name;
-      const esc=s=>s.replace(/'/g,"\\'").replace(/\\/g,"\\\\");
-      return`<div class="file-item"><div class="file-icon ${f.type}">${icon}</div><div class="file-info"><div class="file-name">${f.name}</div><div class="file-meta">${fmt(f.size)} · ${f.modified}</div></div><button class="dl-btn" onclick="event.stopPropagation();downloadFile('${esc(fullPath)}','${esc(f.name)}',${f.size||0})"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button><button class="del-btn" onclick="event.stopPropagation();deleteFile('${esc(fullPath)}')">🗑️</button></div>`;
-    }).join("");
-    updateConnDot(true);
-  }catch(e){
-    updateConnDot(false);
-    el.innerHTML=`<div class="empty">
-      <span class="empty-icon">⚠️</span>
-      <div class="empty-title">Could not load received files</div>
-      <div class="empty-sub">${e.message||'Network error'}</div>
-      <button class="retry-btn" onclick="loadReceived()">🔄 Retry</button>
-    </div>`;
-  }
-}
-
-async function deleteFile(path){
-  if(!confirm("Delete this file?"))return;
-  try{await af("/api/file?path="+encodeURIComponent(path),{method:"DELETE"});toast("Deleted!","success");loadReceived();loadInfo()}
-  catch(e){toast("Delete failed","error")}
-}
-
-async function clearUploads(){
-  if(!confirm("Delete ALL received files? This frees disk space but can't be undone."))return;
-  try{
-    const r=await af("/api/files?path=/uploads");const files=await r.json();
-    for(const f of files)await af("/api/file?path="+encodeURIComponent("/uploads/"+f.name),{method:"DELETE"});
-    toast("All received files cleared!","success");loadReceived();loadInfo();
-  }catch(e){toast("Clear failed","error")}
-}
-
-// ─── Smart auto-refresh (15s, visibility-aware, skip during downloads/uploads) ───
-setInterval(()=>{
-  // Don't poll when tab is hidden or during active transfers
-  if(document.visibilityState==='hidden') return;
-  if(isDownloading || isUploading) return;
-
-  if(document.getElementById("page-files").classList.contains("active")){
-    af("/api/files?path="+encodeURIComponent(currentPath)).then(r=>r.json()).then(nf=>{
-      if(JSON.stringify(nf.map(f=>f.name).sort())!==JSON.stringify(files.map(f=>f.name).sort())){
-        files=nf;
-        filesCache[currentPath]=nf;
-        filesCacheTime[currentPath]=Date.now();
-        renderFiles();
-      }
-      updateConnDot(true);
-    }).catch(()=>updateConnDot(false));
-  }
-  if(document.getElementById("page-received").classList.contains("active"))loadReceived();
-}, POLL_INTERVAL);
-
-// Also refresh info periodically (less often)
-setInterval(()=>{
-  if(document.visibilityState==='hidden') return;
-  if(isDownloading || isUploading) return;
-  loadInfo();
-}, 30000);
+// WebSocket
+let ws = null;
+let wsReconnectDelay = 1000;
+let wsConnected = false;
 
 // ─── Init ───
-loadInfo();
-restoreLastPage();
+document.addEventListener('DOMContentLoaded', () => {
+  switchPage(currentPage);
+  loadInfo();
+  setupUploadZone();
+  startPolling();
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      closePreview();
+      closeDlOverlay();
+      if (selectMode) exitSelectMode();
+    }
+  });
+});
+
+// ─── Pages ───
+function switchPage(page) {
+  currentPage = page;
+  localStorage.setItem('lb_page', page);
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.page === page));
+  if (page === 'send') { currentPath = '/'; loadFiles('/'); }
+  if (page === 'receive') { loadReceived(); }
+  if (selectMode) exitSelectMode();
+  window.scrollTo(0, 0);
+}
+
+// ─── Info ───
+async function loadInfo() {
+  try {
+    const res = await fetch('/api/info');
+    serverInfo = await res.json();
+    document.getElementById('url-text').textContent = serverInfo.url;
+    document.getElementById('home-device').textContent = serverInfo.hostname;
+    document.getElementById('stat-files').textContent = serverInfo.filesShared;
+    document.getElementById('stat-size').textContent = fmtSize(serverInfo.totalSize);
+    document.getElementById('stat-hostname').textContent = serverInfo.hostname;
+    document.getElementById('stat-conn').textContent = serverInfo.connectionType;
+    // Connect WebSocket after getting info
+    if (serverInfo.wsPort) connectWebSocket();
+  } catch(e) { console.error('Info load error', e); }
+}
+
+// ─── WebSocket ───
+function connectWebSocket() {
+  if (ws && ws.readyState <= 1) return;
+  const host = location.hostname;
+  const port = serverInfo.wsPort || 8766;
+  try {
+    ws = new WebSocket('ws://' + host + ':' + port);
+    ws.onopen = () => {
+      wsConnected = true;
+      wsReconnectDelay = 1000;
+      updateConnDot();
+      restartPolling();
+    };
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        handleWsEvent(data);
+      } catch(e) {}
+    };
+    ws.onclose = () => {
+      wsConnected = false;
+      updateConnDot();
+      restartPolling();
+      setTimeout(() => {
+        wsReconnectDelay = Math.min(wsReconnectDelay * 2, 30000);
+        connectWebSocket();
+      }, wsReconnectDelay);
+    };
+    ws.onerror = () => { ws.close(); };
+  } catch(e) {
+    wsConnected = false;
+    updateConnDot();
+  }
+}
+
+function handleWsEvent(data) {
+  switch(data.type) {
+    case 'files_changed':
+      invalidateCache();
+      if (currentPage === 'send') loadFiles(currentPath);
+      if (currentPage === 'receive') loadReceived();
+      if (currentPage === 'home') loadInfo();
+      break;
+    case 'upload_complete':
+      showToast('📥 New file: ' + data.file, 'success');
+      invalidateCache();
+      if (currentPage === 'receive') loadReceived();
+      break;
+    case 'file_deleted':
+      invalidateCache();
+      if (currentPage === 'receive') loadReceived();
+      if (currentPage === 'send') loadFiles(currentPath);
+      break;
+  }
+}
+
+function invalidateCache() { fileCache = {}; }
+
+function updateConnDot() {
+  const dot = document.getElementById('conn-dot');
+  dot.className = 'nav-dot ' + (wsConnected ? 'online' : 'offline');
+}
+
+// ─── Polling (fallback) ───
+function startPolling() { restartPolling(); }
+function restartPolling() {
+  clearInterval(refreshTimer);
+  const interval = wsConnected ? POLL_WS : POLL_FALLBACK;
+  refreshTimer = setInterval(() => {
+    if (document.visibilityState === 'hidden' || uploading || downloadAbort) return;
+    if (currentPage === 'send') loadFiles(currentPath);
+    if (currentPage === 'receive') loadReceived();
+    if (currentPage === 'home') loadInfo();
+  }, interval);
+}
+
+// ─── File Loading ───
+async function loadFiles(path) {
+  currentPath = path;
+  const listEl = document.getElementById('send-list');
+  const countEl = document.getElementById('send-count');
+  renderBreadcrumb(path);
+
+  const cacheKey = 'send:' + path;
+  const cached = fileCache[cacheKey];
+  if (cached && Date.now() - cached.ts < FILE_CACHE_TTL) {
+    renderFileList(cached.data, listEl, countEl, path, false);
+    return;
+  }
+
+  // Skeleton
+  listEl.innerHTML = Array(5).fill('<div class="skeleton skel-item"></div>').join('');
+  countEl.textContent = '';
+
+  try {
+    const res = await fetch('/api/files?path=' + encodeURIComponent(path));
+    const files = await res.json();
+    fileCache[cacheKey] = { data: files, ts: Date.now() };
+    renderFileList(files, listEl, countEl, path, false);
+  } catch(e) {
+    listEl.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Failed to load files</div><div class="empty-desc">${e.message}</div><button class="retry-btn" onclick="loadFiles('${path}')">Retry</button></div>`;
+    countEl.textContent = '';
+  }
+}
+
+async function loadReceived() {
+  const listEl = document.getElementById('receive-list');
+  const cacheKey = 'recv:uploads';
+  const cached = fileCache[cacheKey];
+  if (cached && Date.now() - cached.ts < FILE_CACHE_TTL) {
+    renderFileList(cached.data, listEl, null, 'uploads', true);
+    return;
+  }
+  listEl.innerHTML = Array(3).fill('<div class="skeleton skel-item"></div>').join('');
+  try {
+    const res = await fetch('/api/files?path=uploads');
+    const files = await res.json();
+    fileCache[cacheKey] = { data: files, ts: Date.now() };
+    renderFileList(files, listEl, null, 'uploads', true);
+  } catch(e) {
+    listEl.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Failed to load</div><div class="empty-desc">${e.message}</div><button class="retry-btn" onclick="loadReceived()">Retry</button></div>`;
+  }
+}
+
+// ─── Render File List ───
+function renderFileList(files, container, countEl, basePath, isReceive) {
+  if (!files.length) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">${isReceive ? '📥' : '📂'}</div><div class="empty-title">${isReceive ? 'No uploaded files yet' : 'This folder is empty'}</div><div class="empty-desc">${isReceive ? 'Upload files using the area above' : 'No files are being shared from this folder'}</div></div>`;
+    if (countEl) countEl.textContent = '';
+    return;
+  }
+
+  // Sort: folders first, then by name
+  files.sort((a,b) => {
+    if (a.type === 'folder' && b.type !== 'folder') return -1;
+    if (a.type !== 'folder' && b.type === 'folder') return 1;
+    return a.name.localeCompare(b.name);
+  });
+
+  const folders = files.filter(f => f.type === 'folder').length;
+  const fileCount = files.length - folders;
+  if (countEl) {
+    const parts = [];
+    if (folders) parts.push(folders + ' folder' + (folders > 1 ? 's' : ''));
+    if (fileCount) parts.push(fileCount + ' file' + (fileCount > 1 ? 's' : ''));
+    countEl.textContent = parts.join(', ');
+  }
+
+  container.innerHTML = files.map(file => {
+    const fullPath = basePath === '/' ? file.name : basePath + '/' + file.name;
+    const icon = getFileIcon(file);
+    const isImage = file.type === 'image';
+    const isFolder = file.type === 'folder';
+    const showCheck = selectMode && !isFolder && !isReceive;
+    const isSelected = selectedFiles.has(fullPath);
+
+    let iconHtml;
+    if (isImage) {
+      const thumbUrl = '/api/thumbnail?path=' + encodeURIComponent(fullPath) + '&size=80';
+      iconHtml = `<div class="file-icon"><img src="${thumbUrl}" loading="lazy" onerror="this.parentElement.innerHTML='🖼️'" alt=""></div>`;
+    } else {
+      iconHtml = `<div class="file-icon">${icon}</div>`;
+    }
+
+    let actionsHtml = '';
+    if (!selectMode) {
+      if (isReceive && !isFolder) {
+        actionsHtml = `<div class="file-actions"><button class="btn-download" onclick="event.stopPropagation();handleFileClick('${esc(fullPath)}','${file.type}')">⬇</button><button class="btn-delete" onclick="event.stopPropagation();deleteFile('${esc(fullPath)}')">🗑</button></div>`;
+      } else if (!isFolder) {
+        actionsHtml = `<div class="file-actions"><button class="btn-download" onclick="event.stopPropagation();handleFileClick('${esc(fullPath)}','${file.type}')">⬇</button></div>`;
+      }
+    }
+
+    const checkHtml = showCheck ? `<div class="file-check">${isSelected ? '✓' : ''}</div>` : '';
+
+    let onclick;
+    if (isFolder) {
+      onclick = `loadFiles('${esc(fullPath)}')`;
+    } else if (selectMode && !isReceive) {
+      onclick = `toggleSelect('${esc(fullPath)}')`;
+    } else {
+      onclick = `handleFileClick('${esc(fullPath)}','${file.type}')`;
+    }
+
+    const longpress = (!isReceive && !isFolder && !selectMode) ? `oncontextmenu="event.preventDefault();enterSelectMode('${esc(fullPath)}')"` : '';
+
+    return `<div class="file-item${isSelected ? ' selected' : ''}" onclick="${onclick}" ${longpress}>
+      ${checkHtml}${iconHtml}
+      <div class="file-info"><div class="file-name">${escHtml(file.name)}</div><div class="file-meta">${isFolder ? (file.items || 0) + ' items • ' : ''}${fmtSize(file.size)} • ${file.modified}</div></div>
+      ${actionsHtml}
+    </div>`;
+  }).join('');
+}
+
+// ─── Multi-Select ───
+function enterSelectMode(firstFile) {
+  selectMode = true;
+  selectedFiles.clear();
+  selectedFiles.add(firstFile);
+  document.body.classList.add('select-mode');
+  document.getElementById('select-bar').classList.remove('hidden');
+  // Haptic feedback
+  if (navigator.vibrate) navigator.vibrate(30);
+  updateSelectBar();
+  // Re-render
+  const cacheKey = 'send:' + currentPath;
+  const cached = fileCache[cacheKey];
+  if (cached) renderFileList(cached.data, document.getElementById('send-list'), document.getElementById('send-count'), currentPath, false);
+}
+
+function toggleSelect(path) {
+  if (selectedFiles.has(path)) selectedFiles.delete(path);
+  else selectedFiles.add(path);
+  updateSelectBar();
+  const cacheKey = 'send:' + currentPath;
+  const cached = fileCache[cacheKey];
+  if (cached) renderFileList(cached.data, document.getElementById('send-list'), document.getElementById('send-count'), currentPath, false);
+}
+
+function toggleSelectAll() {
+  const cacheKey = 'send:' + currentPath;
+  const cached = fileCache[cacheKey];
+  if (!cached) return;
+  const allFiles = cached.data.filter(f => f.type !== 'folder').map(f => currentPath === '/' ? f.name : currentPath + '/' + f.name);
+  if (selectedFiles.size === allFiles.length) {
+    selectedFiles.clear();
+    document.getElementById('sel-all-btn').textContent = 'Select All';
+  } else {
+    allFiles.forEach(f => selectedFiles.add(f));
+    document.getElementById('sel-all-btn').textContent = 'Deselect';
+  }
+  updateSelectBar();
+  renderFileList(cached.data, document.getElementById('send-list'), document.getElementById('send-count'), currentPath, false);
+}
+
+function exitSelectMode() {
+  selectMode = false;
+  selectedFiles.clear();
+  document.body.classList.remove('select-mode');
+  document.getElementById('select-bar').classList.add('hidden');
+  const cacheKey = 'send:' + currentPath;
+  const cached = fileCache[cacheKey];
+  if (cached) renderFileList(cached.data, document.getElementById('send-list'), document.getElementById('send-count'), currentPath, false);
+}
+
+function updateSelectBar() {
+  document.getElementById('sel-count').textContent = selectedFiles.size + ' selected';
+  const zipBtn = document.querySelector('.sel-zip-btn');
+  if (zipBtn) zipBtn.textContent = '📦 ZIP (' + selectedFiles.size + ')';
+  // Disable ZIP if nothing selected
+  if (zipBtn) zipBtn.disabled = selectedFiles.size === 0;
+}
+
+async function downloadSelectedZip() {
+  if (!selectedFiles.size) return;
+  const filesList = Array.from(selectedFiles);
+
+  // Use a hidden form POST — the server responds with Content-Disposition: attachment
+  // which triggers the browser/WebView native download handler (no blob URL needed)
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = '/api/download-zip';
+  form.style.display = 'none';
+
+  // Send files as a hidden input with JSON
+  const input = document.createElement('input');
+  input.type = 'hidden';
+  input.name = 'files_json';
+  input.value = JSON.stringify(filesList);
+  form.appendChild(input);
+
+  document.body.appendChild(form);
+
+  showToast('📦 ZIP download starting — check your Downloads folder', 'success');
+  form.submit();
+
+  // Cleanup form after a brief delay
+  setTimeout(() => { form.remove(); }, 1000);
+  exitSelectMode();
+}
+
+// ─── File Click Handler ───
+function handleFileClick(path, type) {
+  if (type === 'image' || type === 'video' || type === 'audio') {
+    openPreview(path, type);
+  } else {
+    downloadFile(path);
+  }
+}
+
+// ─── Preview ───
+function openPreview(path, type) {
+  const overlay = document.getElementById('preview-overlay');
+  overlay.classList.remove('hidden');
+  const streamUrl = '/api/stream?path=' + encodeURIComponent(path);
+  const fileName = path.split('/').pop();
+  let mediaHtml = '';
+  if (type === 'image') {
+    mediaHtml = `<img class="preview-img" src="${streamUrl}" alt="${escHtml(fileName)}">`;
+  } else if (type === 'video') {
+    mediaHtml = `<video class="preview-media" src="${streamUrl}" controls autoplay playsinline></video>`;
+  } else if (type === 'audio') {
+    mediaHtml = `<div class="card" style="padding:30px;text-align:center"><div style="font-size:64px;margin-bottom:16px">🎵</div><div style="font-size:14px;font-weight:700;margin-bottom:16px">${escHtml(fileName)}</div><audio class="preview-media" src="${streamUrl}" controls autoplay style="width:100%;max-width:400px"></audio></div>`;
+  }
+  overlay.innerHTML = `
+    <button class="preview-close" onclick="closePreview()">✕</button>
+    ${mediaHtml}
+    <div class="preview-actions">
+      <button class="preview-dl-btn" onclick="closePreview();downloadFile('${esc(path)}')">⬇ Download</button>
+    </div>`;
+  overlay.onclick = (e) => { if (e.target === overlay) closePreview(); };
+}
+
+function closePreview() {
+  const overlay = document.getElementById('preview-overlay');
+  overlay.classList.add('hidden');
+  overlay.innerHTML = '';
+}
+
+// ─── Download ───
+function downloadFile(path) {
+  const fileName = path.split('/').pop();
+  // Direct link download — triggers WebView's DownloadListener (saves to Downloads/LAN Beam/)
+  // Also works in external browsers via native download
+  const a = document.createElement('a');
+  a.href = '/api/download?path=' + encodeURIComponent(path);
+  a.download = fileName;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  showToast('⬇ Downloading: ' + fileName + ' → Downloads/LAN Beam/', 'success');
+}
+
+function showLargeDownloadOverlay(name) {
+  const overlay = document.getElementById('dl-overlay');
+  overlay.classList.remove('hidden');
+  overlay.innerHTML = `<div class="dl-card dl-done"><div class="dl-icon">⬇️</div><div class="dl-title">Download Started</div><div class="dl-subtitle">${escHtml(name)}</div><div style="font-size:12px;color:var(--text2);margin-bottom:14px">Check your browser's notification bar for progress</div><button class="dl-cancel" onclick="closeDlOverlay()">OK</button></div>`;
+  setTimeout(closeDlOverlay, 4000);
+}
+
+async function streamDownload(path, fileName, totalSize) {
+  const overlay = document.getElementById('dl-overlay');
+  overlay.classList.remove('hidden');
+  const controller = new AbortController();
+  downloadAbort = controller;
+
+  overlay.innerHTML = `<div class="dl-card"><div class="dl-icon">⬇️</div><div class="dl-title">Downloading</div><div class="dl-subtitle">${escHtml(fileName)}</div><div class="dl-progress"><div class="dl-progress-bar" id="dl-bar" style="width:0%"></div></div><div class="dl-stats"><span id="dl-speed">--</span><span id="dl-pct">0%</span><span id="dl-eta">--</span></div><button class="dl-cancel" onclick="cancelDownload()">Cancel</button></div>`;
+
+  try {
+    const res = await fetch('/api/download?path=' + encodeURIComponent(path), { signal: controller.signal });
+    const total = parseInt(res.headers.get('content-length')) || totalSize;
+    const reader = res.body.getReader();
+    const chunks = [];
+    let received = 0;
+    let lastTime = Date.now(), lastBytes = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      const now = Date.now();
+      const dt = (now - lastTime) / 1000;
+      if (dt >= 0.5) {
+        const speed = (received - lastBytes) / dt;
+        document.getElementById('dl-speed').textContent = fmtSize(speed) + '/s';
+        const eta = total > 0 ? Math.ceil((total - received) / speed) : 0;
+        document.getElementById('dl-eta').textContent = eta > 0 ? fmtTime(eta) : '--';
+        lastTime = now; lastBytes = received;
+      }
+      if (total > 0) {
+        const pct = Math.round(received / total * 100);
+        document.getElementById('dl-bar').style.width = pct + '%';
+        document.getElementById('dl-pct').textContent = pct + '%';
+      }
+    }
+
+    const blob = new Blob(chunks);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = fileName;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    closeDlOverlay();
+    showToast('✅ Downloaded: ' + fileName, 'success');
+  } catch(e) {
+    if (e.name === 'AbortError') {
+      showToast('Download cancelled', 'error');
+    } else {
+      overlay.innerHTML = `<div class="dl-card"><div class="dl-icon">⚠️</div><div class="dl-title">Download Failed</div><div class="dl-subtitle">${e.message}</div><button class="dl-cancel" onclick="closeDlOverlay()">Close</button></div>`;
+    }
+  } finally {
+    downloadAbort = null;
+  }
+}
+
+function cancelDownload() {
+  if (downloadAbort) downloadAbort.abort();
+  closeDlOverlay();
+}
+
+function closeDlOverlay() {
+  document.getElementById('dl-overlay').classList.add('hidden');
+  document.getElementById('dl-overlay').innerHTML = '';
+}
+
+// ─── Delete ───
+async function deleteFile(path) {
+  if (!confirm('Delete this file?')) return;
+  try {
+    const res = await fetch('/api/file?path=' + encodeURIComponent(path), { method: 'DELETE' });
+    if (res.ok) {
+      showToast('🗑 File deleted', 'success');
+      invalidateCache();
+      loadReceived();
+    } else {
+      showToast('Failed to delete', 'error');
+    }
+  } catch(e) { showToast('Delete error: ' + e.message, 'error'); }
+}
+
+// ─── Breadcrumb ───
+function renderBreadcrumb(path) {
+  const bc = document.getElementById('breadcrumb');
+  const parts = path.split('/').filter(Boolean);
+  let html = '';
+  if (parts.length > 0) {
+    html += `<button class="back-btn" onclick="loadFiles('${parts.length > 1 ? esc(parts.slice(0, -1).join('/')) : '/'}')">← Back</button>`;
+  }
+  html += `<button onclick="loadFiles('/')">🏠 Home</button>`;
+  let cumPath = '';
+  parts.forEach((p, i) => {
+    cumPath += (cumPath ? '/' : '') + p;
+    html += `<span class="sep">/</span><button onclick="loadFiles('${esc(cumPath)}')">${escHtml(p)}</button>`;
+  });
+  bc.innerHTML = html;
+}
+
+// ─── Upload ───
+function setupUploadZone() {
+  const zone = document.getElementById('upload-zone');
+  const input = document.getElementById('file-input');
+
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('dragover');
+    addToQueue(Array.from(e.dataTransfer.files));
+  });
+  input.addEventListener('change', () => {
+    addToQueue(Array.from(input.files));
+    input.value = '';
+  });
+}
+
+function addToQueue(files) {
+  files.forEach(f => uploadQueue.push({ file: f, progress: 0, done: false, error: false }));
+  renderUploadQueue();
+}
+
+function removeFromQueue(i) {
+  uploadQueue.splice(i, 1);
+  if (!uploadQueue.length) {
+    document.getElementById('upload-queue-wrap').classList.add('hidden');
+    document.getElementById('upload-start-btn').classList.add('hidden');
+    document.getElementById('upload-progress-wrap').classList.add('hidden');
+  }
+  renderUploadQueue();
+}
+
+function clearQueue() {
+  uploadQueue = [];
+  document.getElementById('upload-queue-wrap').classList.add('hidden');
+  document.getElementById('upload-start-btn').classList.add('hidden');
+  document.getElementById('upload-progress-wrap').classList.add('hidden');
+}
+
+function renderUploadQueue() {
+  if (!uploadQueue.length) return;
+  const wrap = document.getElementById('upload-queue-wrap');
+  wrap.classList.remove('hidden');
+  document.getElementById('upload-start-btn').classList.remove('hidden');
+
+  wrap.innerHTML = `<div class="upload-q-header"><span class="upload-q-title">📎 ${uploadQueue.length} file(s) queued</span><button class="upload-q-clear" onclick="clearQueue()">Clear All</button></div>` +
+    uploadQueue.map((item, i) => {
+      const icon = getFileIconByName(item.file.name);
+      const statusClass = item.done ? ' uq-done' : '';
+      return `<div class="uq-item${statusClass}"><div class="uq-icon">${icon}</div><div class="uq-info"><div class="uq-name">${escHtml(item.file.name)}</div><div class="uq-size">${fmtSize(item.file.size)}</div><div class="uq-progress"><div class="uq-progress-bar" style="width:${item.progress}%"></div></div></div>${!uploading ? `<button class="uq-remove" onclick="removeFromQueue(${i})">✕</button>` : ''}</div>`;
+    }).join('');
+}
+
+async function startUpload() {
+  if (!uploadQueue.length || uploading) return;
+  uploading = true;
+  document.getElementById('upload-start-btn').disabled = true;
+  const progWrap = document.getElementById('upload-progress-wrap');
+  progWrap.classList.remove('hidden');
+
+  let completed = 0;
+  for (let i = 0; i < uploadQueue.length; i++) {
+    const item = uploadQueue[i];
+    try {
+      await uploadSingleFile(item, i);
+      item.done = true;
+    } catch(e) {
+      item.error = true;
+    }
+    completed++;
+    const pct = Math.round(completed / uploadQueue.length * 100);
+    progWrap.innerHTML = `<div class="upload-progress"><div class="up-status"><span>Uploading ${completed}/${uploadQueue.length}</span><span>${pct}%</span></div><div class="up-bar"><div class="up-bar-fill" style="width:${pct}%"></div></div></div>`;
+    renderUploadQueue();
+  }
+
+  uploading = false;
+  document.getElementById('upload-start-btn').disabled = false;
+  showToast(`✅ Uploaded ${completed} file(s)`, 'success');
+  invalidateCache();
+  loadReceived();
+  setTimeout(() => { uploadQueue = []; clearQueue(); }, 2000);
+}
+
+function uploadSingleFile(item, index) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/upload');
+    const fd = new FormData();
+    fd.append('file', item.file, item.file.name);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        item.progress = Math.round(e.loaded / e.total * 100);
+        renderUploadQueue();
+      }
+    };
+    xhr.onload = () => { item.progress = 100; resolve(); };
+    xhr.onerror = () => reject(new Error('Upload failed'));
+    xhr.send(fd);
+  });
+}
+
+// ─── Copy URL ───
+function copyUrl() {
+  const url = serverInfo.url || 'http://127.0.0.1:8765';
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(url).then(() => animateCopy());
+  } else {
+    const ta = document.createElement('textarea'); ta.value = url;
+    document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+    ta.remove(); animateCopy();
+  }
+}
+function animateCopy() {
+  const bar = document.getElementById('url-bar');
+  const icon = document.getElementById('copy-icon');
+  bar.classList.add('copied'); icon.textContent = '✅';
+  showToast('📋 URL Copied!', 'success');
+  setTimeout(() => { bar.classList.remove('copied'); icon.textContent = '📋'; }, 2000);
+}
+
+// ─── Helpers ───
+function fmtSize(bytes) {
+  if (!bytes || bytes <= 0) return '0 B';
+  const u = ['B','KB','MB','GB','TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + u[i];
+}
+function fmtTime(sec) {
+  if (sec < 60) return sec + 's';
+  if (sec < 3600) return Math.floor(sec/60) + 'm ' + (sec%60) + 's';
+  return Math.floor(sec/3600) + 'h ' + Math.floor((sec%3600)/60) + 'm';
+}
+function esc(s) { return s.replace(/'/g, "\\'").replace(/\\/g, "\\\\"); }
+function escHtml(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+function getFileIcon(file) {
+  const icons = { folder:'📁', video:'📹', audio:'🎵', image:'🖼️', pdf:'📑', archive:'📦', apk:'📱', doc:'📄' };
+  return icons[file.type] || '📄';
+}
+function getFileIconByName(name) {
+  const ext = name.split('.').pop().toLowerCase();
+  const map = { mp4:'📹',mkv:'📹',mov:'📹',avi:'📹',webm:'📹',mp3:'🎵',flac:'🎵',wav:'🎵',m4a:'🎵',aac:'🎵',ogg:'🎵',jpg:'🖼️',jpeg:'🖼️',png:'🖼️',gif:'🖼️',webp:'🖼️',svg:'🖼️',heic:'🖼️',pdf:'📑',zip:'📦',tar:'📦',gz:'📦',rar:'📦','7z':'📦',apk:'📱' };
+  return map[ext] || '📄';
+}
+
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + (type || '');
+  requestAnimationFrame(() => { t.classList.add('show'); });
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 3000);
+}
 </script>
 </body>
 </html>

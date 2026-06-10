@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.lanbeam"
         minSdk = 24
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.3"
+        versionCode = 5
+        versionName = "2.1"
     }
 
     buildTypes {
@@ -84,6 +84,7 @@ dependencies {
 
   // Embeddable HTTP Server and QR Code generator
   implementation("org.nanohttpd:nanohttpd:2.3.1")
+  implementation("org.nanohttpd:nanohttpd-websocket:2.3.1")
   implementation("com.google.zxing:core:3.5.3")
   implementation("androidx.compose.material:material-icons-core")
 }

@@ -2,6 +2,7 @@ package com.example.lanbeam
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.os.Build
 import android.os.Environment
@@ -13,6 +14,8 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
+import java.io.PipedInputStream
+import java.io.PipedOutputStream
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.text.SimpleDateFormat
@@ -20,8 +23,15 @@ import java.util.Date
 import java.util.HashMap
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 class LanBeamServer(private val context: Context, val port: Int) : NanoHTTPD(port) {
+
+    // Event hooks for WebSocket broadcasting
+    var onFileChanged: (() -> Unit)? = null
+    var onUploadComplete: ((String) -> Unit)? = null
+    var onFileDeleted: ((String) -> Unit)? = null
 
     private val htmlContent: String by lazy {
         try {
@@ -34,6 +44,11 @@ class LanBeamServer(private val context: Context, val port: Int) : NanoHTTPD(por
     private data class CachedDirInfo(val size: Long, val itemCount: Int, val timestamp: Long)
     private val dirInfoCache = ConcurrentHashMap<String, CachedDirInfo>()
     private val DIR_CACHE_TTL_MS = 10_000L // 10 seconds
+
+    // Thumbnail cache directory
+    private val thumbCacheDir: File by lazy {
+        File(context.cacheDir, "thumbnails").also { if (!it.exists()) it.mkdirs() }
+    }
 
     override fun serve(session: IHTTPSession): Response {
         if (session.method == Method.OPTIONS) {
@@ -57,6 +72,7 @@ class LanBeamServer(private val context: Context, val port: Int) : NanoHTTPD(por
         response.addHeader("Access-Control-Allow-Headers", "*")
         response.addHeader("Access-Control-Expose-Headers", "Content-Length, Content-Disposition")
         response.addHeader("Connection", "keep-alive")
+        response.addHeader("X-Content-Type-Options", "nosniff")
     }
 
     private fun handleRequest(session: IHTTPSession): Response {
@@ -75,6 +91,7 @@ class LanBeamServer(private val context: Context, val port: Int) : NanoHTTPD(por
                     {
                         "ip": "$ip",
                         "port": $port,
+                        "wsPort": ${port + 1},
                         "hostname": "$deviceName",
                         "sharedPath": "${getSharedDir().absolutePath}",
                         "url": "http://$ip:$port",
@@ -118,53 +135,13 @@ class LanBeamServer(private val context: Context, val port: Int) : NanoHTTPD(por
                 newFixedLengthResponse(Response.Status.OK, "application/json", json)
             }
             uri == "/api/download" -> {
-                val pathParams = session.parameters["path"]
-                val relativePath = pathParams?.firstOrNull() ?: return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Missing path")
-                val targetFile = resolvePath(relativePath)
-
-                if (!targetFile.exists() || !targetFile.isFile) {
-                    return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "File not found")
-                }
-
-                val ext = targetFile.extension.lowercase()
-                val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream"
-                val totalSize = targetFile.length()
-
-                val rangeHeader = session.headers["range"] ?: session.headers["Range"]
-                val response = if (rangeHeader != null && rangeHeader.startsWith("bytes=")) {
-                    try {
-                        val rangeValue = rangeHeader.substring(6)
-                        val parts = rangeValue.split("-")
-                        var start = parts[0].toLongOrNull() ?: 0L
-                        var end = parts.getOrNull(1)?.toLongOrNull() ?: (totalSize - 1)
-
-                        if (start >= totalSize) {
-                            val r = newFixedLengthResponse(Response.Status.RANGE_NOT_SATISFIABLE, "text/plain", "")
-                            r.addHeader("Content-Range", "bytes */$totalSize")
-                            r
-                        } else {
-                            if (end >= totalSize) {
-                                end = totalSize - 1
-                            }
-                            val contentLength = end - start + 1
-                            val rangeStream = RangeInputStream(targetFile, start, contentLength)
-                            val r = newFixedLengthResponse(Response.Status.PARTIAL_CONTENT, mime, rangeStream, contentLength)
-                            r.addHeader("Content-Range", "bytes $start-$end/$totalSize")
-                            r.addHeader("Content-Length", contentLength.toString())
-                            r
-                        }
-                    } catch (e: Exception) {
-                        val fis = java.io.BufferedInputStream(FileInputStream(targetFile), 8 * 1024 * 1024)
-                        newFixedLengthResponse(Response.Status.OK, mime, fis, totalSize)
-                    }
-                } else {
-                    val fis = java.io.BufferedInputStream(FileInputStream(targetFile), 8 * 1024 * 1024)
-                    newFixedLengthResponse(Response.Status.OK, mime, fis, totalSize)
-                }
-
-                response.addHeader("Content-Disposition", "attachment; filename=\"${targetFile.name}\"")
-                response.addHeader("Accept-Ranges", "bytes")
-                response
+                handleDownload(session, asAttachment = true)
+            }
+            uri == "/api/stream" -> {
+                handleDownload(session, asAttachment = false)
+            }
+            uri == "/api/thumbnail" -> {
+                handleThumbnail(session)
             }
             uri == "/api/upload" -> {
                 val files = HashMap<String, String>()
@@ -196,6 +173,10 @@ class LanBeamServer(private val context: Context, val port: Int) : NanoHTTPD(por
                     return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Failed to save file: ${e.message}")
                 }
 
+                // Broadcast WebSocket event
+                onUploadComplete?.invoke(destFile.name)
+                onFileChanged?.invoke()
+
                 val json = """{"ok":true,"filename":"${destFile.name.replace("\"", "\\\"")}","size":${destFile.length()}}"""
                 newFixedLengthResponse(Response.Status.OK, "application/json", json)
             }
@@ -223,6 +204,7 @@ class LanBeamServer(private val context: Context, val port: Int) : NanoHTTPD(por
                     return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "File not found")
                 }
 
+                val deletedName = targetFile.name
                 val deleted = if (targetFile.isDirectory) {
                     targetFile.deleteRecursively()
                 } else {
@@ -230,7 +212,11 @@ class LanBeamServer(private val context: Context, val port: Int) : NanoHTTPD(por
                 }
 
                 if (deleted) {
-                    val json = """{"ok":true,"deleted":"${targetFile.name.replace("\"", "\\\"")}"}"""
+                    // Broadcast WebSocket event
+                    onFileDeleted?.invoke(deletedName)
+                    onFileChanged?.invoke()
+
+                    val json = """{"ok":true,"deleted":"${deletedName.replace("\"", "\\\"")}"}"""
                     newFixedLengthResponse(Response.Status.OK, "application/json", json)
                 } else {
                     newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Delete failed")
@@ -251,6 +237,9 @@ class LanBeamServer(private val context: Context, val port: Int) : NanoHTTPD(por
                 val json = """{"count":$count,"totalSize":$totalSize}"""
                 newFixedLengthResponse(Response.Status.OK, "application/json", json)
             }
+            uri == "/api/download-zip" && session.method == Method.POST -> {
+                handleZipDownload(session)
+            }
             uri == "/api/devices" -> {
                 newFixedLengthResponse(Response.Status.OK, "application/json", "[]")
             }
@@ -261,6 +250,302 @@ class LanBeamServer(private val context: Context, val port: Int) : NanoHTTPD(por
                 newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not Found")
             }
         }
+    }
+
+    // ─── Download / Stream handler (shared logic) ───
+    private fun handleDownload(session: IHTTPSession, asAttachment: Boolean): Response {
+        val pathParams = session.parameters["path"]
+        val relativePath = pathParams?.firstOrNull()
+            ?: return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Missing path")
+        val targetFile = resolvePath(relativePath)
+
+        if (!targetFile.exists() || !targetFile.isFile) {
+            return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "File not found")
+        }
+
+        val ext = targetFile.extension.lowercase()
+        val mime = getProperMimeType(ext)
+        val totalSize = targetFile.length()
+
+        val rangeHeader = session.headers["range"] ?: session.headers["Range"]
+        val response = if (rangeHeader != null && rangeHeader.startsWith("bytes=")) {
+            try {
+                val rangeValue = rangeHeader.substring(6)
+                val parts = rangeValue.split("-")
+                val start = parts[0].toLongOrNull() ?: 0L
+                var end = parts.getOrNull(1)?.toLongOrNull() ?: (totalSize - 1)
+
+                if (start >= totalSize) {
+                    val r = newFixedLengthResponse(Response.Status.RANGE_NOT_SATISFIABLE, "text/plain", "")
+                    r.addHeader("Content-Range", "bytes */$totalSize")
+                    r
+                } else {
+                    if (end >= totalSize) end = totalSize - 1
+                    val contentLength = end - start + 1
+                    val rangeStream = RangeInputStream(targetFile, start, contentLength)
+                    val r = newFixedLengthResponse(Response.Status.PARTIAL_CONTENT, mime, rangeStream, contentLength)
+                    r.addHeader("Content-Range", "bytes $start-$end/$totalSize")
+                    r.addHeader("Content-Length", contentLength.toString())
+                    r
+                }
+            } catch (e: Exception) {
+                val fis = java.io.BufferedInputStream(FileInputStream(targetFile), 8 * 1024 * 1024)
+                newFixedLengthResponse(Response.Status.OK, mime, fis, totalSize)
+            }
+        } else {
+            val fis = java.io.BufferedInputStream(FileInputStream(targetFile), 8 * 1024 * 1024)
+            newFixedLengthResponse(Response.Status.OK, mime, fis, totalSize)
+        }
+
+        if (asAttachment) {
+            response.addHeader("Content-Disposition", "attachment; filename=\"${targetFile.name}\"")
+        } else {
+            response.addHeader("Content-Disposition", "inline")
+        }
+        response.addHeader("Accept-Ranges", "bytes")
+        response.addHeader("Content-Length", totalSize.toString())
+        return response
+    }
+
+    // Proper MIME type resolver — covers formats Android's MimeTypeMap misses
+    private fun getProperMimeType(ext: String): String {
+        // Manual overrides for commonly-missed types
+        val overrides = mapOf(
+            "mkv" to "video/x-matroska",
+            "flv" to "video/x-flv",
+            "wmv" to "video/x-ms-wmv",
+            "avi" to "video/x-msvideo",
+            "ts" to "video/mp2t",
+            "m4v" to "video/mp4",
+            "flac" to "audio/flac",
+            "opus" to "audio/opus",
+            "wma" to "audio/x-ms-wma",
+            "m4a" to "audio/mp4",
+            "ogg" to "audio/ogg",
+            "aac" to "audio/aac",
+            "webm" to "video/webm",
+            "heic" to "image/heic",
+            "heif" to "image/heif",
+            "avif" to "image/avif",
+            "7z" to "application/x-7z-compressed",
+            "apk" to "application/vnd.android.package-archive"
+        )
+        overrides[ext]?.let { return it }
+        return MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream"
+    }
+
+    // ─── Thumbnail handler ───
+    private fun handleThumbnail(session: IHTTPSession): Response {
+        val pathParams = session.parameters["path"]
+        val relativePath = pathParams?.firstOrNull()
+            ?: return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Missing path")
+        val targetFile = resolvePath(relativePath)
+
+        if (!targetFile.exists() || !targetFile.isFile) {
+            return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "File not found")
+        }
+
+        // Only generate thumbnails for image types
+        val type = getFileType(targetFile.name)
+        if (type != "image") {
+            return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "Not an image file")
+        }
+
+        val size = session.parameters["size"]?.firstOrNull()?.toIntOrNull() ?: 200
+
+        // Check thumbnail cache
+        val cacheKey = "${targetFile.absolutePath}_${targetFile.lastModified()}_$size"
+        val cacheFile = File(thumbCacheDir, cacheKey.hashCode().toUInt().toString(16) + ".jpg")
+
+        if (cacheFile.exists()) {
+            val fis = FileInputStream(cacheFile)
+            val resp = newFixedLengthResponse(Response.Status.OK, "image/jpeg", fis, cacheFile.length())
+            resp.addHeader("Cache-Control", "public, max-age=300")
+            return resp
+        }
+
+        // Generate thumbnail
+        try {
+            // First pass: get dimensions
+            val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(targetFile.absolutePath, options)
+
+            if (options.outWidth <= 0 || options.outHeight <= 0) {
+                return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Cannot decode image")
+            }
+
+            // Calculate sample size for efficient decoding
+            val maxDim = maxOf(options.outWidth, options.outHeight)
+            var inSampleSize = 1
+            while (maxDim / inSampleSize > size * 2) {
+                inSampleSize *= 2
+            }
+
+            // Second pass: decode with sample size
+            val decodeOptions = BitmapFactory.Options().apply {
+                this.inSampleSize = inSampleSize
+            }
+            val bitmap = BitmapFactory.decodeFile(targetFile.absolutePath, decodeOptions)
+                ?: return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Cannot decode image")
+
+            // Scale to exact thumbnail size
+            val scale = size.toFloat() / maxOf(bitmap.width, bitmap.height)
+            val thumbWidth = (bitmap.width * scale).toInt().coerceAtLeast(1)
+            val thumbHeight = (bitmap.height * scale).toInt().coerceAtLeast(1)
+            val thumbnail = Bitmap.createScaledBitmap(bitmap, thumbWidth, thumbHeight, true)
+            if (thumbnail != bitmap) bitmap.recycle()
+
+            // Save to cache
+            val baos = ByteArrayOutputStream()
+            thumbnail.compress(Bitmap.CompressFormat.JPEG, 75, baos)
+            thumbnail.recycle()
+            val thumbBytes = baos.toByteArray()
+
+            try {
+                cacheFile.writeBytes(thumbBytes)
+            } catch (e: Exception) {
+                // Cache write failure is non-fatal
+            }
+
+            val resp = newFixedLengthResponse(
+                Response.Status.OK, "image/jpeg",
+                ByteArrayInputStream(thumbBytes), thumbBytes.size.toLong()
+            )
+            resp.addHeader("Cache-Control", "public, max-age=300")
+            return resp
+        } catch (e: Exception) {
+            return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Thumbnail error: ${e.message}")
+        }
+    }
+
+    // ─── Batch ZIP download handler ───
+    private fun handleZipDownload(session: IHTTPSession): Response {
+        try {
+            val bodyMap = HashMap<String, String>()
+            session.parseBody(bodyMap)
+
+            // Support two formats:
+            // 1. Form POST: files_json param contains JSON string (from hidden form submission)
+            // 2. Raw JSON POST: body is raw JSON with "files" key (from fetch API)
+            val filesJson = session.parameters["files_json"]?.firstOrNull()
+            val body = filesJson ?: bodyMap["postData"] ?: return newFixedLengthResponse(
+                Response.Status.BAD_REQUEST, "text/plain", "Missing request body"
+            )
+
+            // Parse file paths — try as raw JSON array first, then as object with "files" key
+            var paths = parseJsonStringArray(body, "files")
+            if (paths.isEmpty()) {
+                // Maybe it's a bare JSON array: ["path1","path2"]
+                paths = parseJsonBareArray(body)
+            }
+            if (paths.isEmpty()) {
+                return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "No files specified")
+            }
+
+            // Resolve and validate all files
+            val resolvedFiles = mutableListOf<Pair<String, File>>()
+            for (path in paths) {
+                try {
+                    val file = resolvePath(path)
+                    if (file.exists() && file.isFile) {
+                        resolvedFiles.add(Pair(file.name, file))
+                    }
+                } catch (e: SecurityException) {
+                    // Skip files with traversal issues
+                }
+            }
+
+            if (resolvedFiles.isEmpty()) {
+                return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "No valid files found")
+            }
+
+            // Stream ZIP using PipedOutputStream
+            val pipedOut = PipedOutputStream()
+            val pipedIn = PipedInputStream(pipedOut, 1024 * 1024) // 1MB pipe buffer
+
+            Thread {
+                try {
+                    ZipOutputStream(pipedOut).use { zos ->
+                        zos.setLevel(1) // Fast compression (speed > ratio for LAN transfer)
+                        val buffer = ByteArray(8 * 1024 * 1024) // 8MB buffer
+                        val usedNames = mutableSetOf<String>()
+
+                        for ((name, file) in resolvedFiles) {
+                            // Handle duplicate names
+                            var zipName = name
+                            if (usedNames.contains(zipName)) {
+                                val base = file.nameWithoutExtension
+                                val ext = if (file.extension.isNotEmpty()) ".${file.extension}" else ""
+                                var counter = 1
+                                while (usedNames.contains(zipName)) {
+                                    zipName = "$base ($counter)$ext"
+                                    counter++
+                                }
+                            }
+                            usedNames.add(zipName)
+
+                            zos.putNextEntry(ZipEntry(zipName))
+                            FileInputStream(file).use { fis ->
+                                var len: Int
+                                while (fis.read(buffer).also { len = it } > 0) {
+                                    zos.write(buffer, 0, len)
+                                }
+                            }
+                            zos.closeEntry()
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                } finally {
+                    try { pipedOut.close() } catch (_: Exception) {}
+                }
+            }.start()
+
+            val response = newFixedLengthResponse(
+                Response.Status.OK,
+                "application/zip",
+                pipedIn,
+                -1 // Unknown length — chunked transfer
+            )
+            response.addHeader("Content-Disposition", "attachment; filename=\"LAN_Beam_files.zip\"")
+            return response
+        } catch (e: Exception) {
+            return newFixedLengthResponse(
+                Response.Status.INTERNAL_ERROR, "text/plain", "ZIP error: ${e.message}"
+            )
+        }
+    }
+
+    // Simple JSON string array parser (avoids adding a JSON library dependency)
+    private fun parseJsonStringArray(json: String, key: String): List<String> {
+        val result = mutableListOf<String>()
+        val keyPattern = "\"$key\""
+        val keyIdx = json.indexOf(keyPattern)
+        if (keyIdx < 0) return result
+
+        val bracketStart = json.indexOf('[', keyIdx)
+        val bracketEnd = json.indexOf(']', bracketStart)
+        if (bracketStart < 0 || bracketEnd < 0) return result
+
+        val arrayContent = json.substring(bracketStart + 1, bracketEnd)
+        val regex = Regex("\"([^\"\\\\]*(\\\\.[^\"\\\\]*)*)\"")
+        for (match in regex.findAll(arrayContent)) {
+            result.add(match.groupValues[1].replace("\\\"", "\"").replace("\\\\", "\\"))
+        }
+        return result
+    }
+
+    // Parse a bare JSON array like ["path1","path2"]
+    private fun parseJsonBareArray(json: String): List<String> {
+        val trimmed = json.trim()
+        if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) return emptyList()
+        val content = trimmed.substring(1, trimmed.length - 1)
+        val result = mutableListOf<String>()
+        val regex = Regex("\"([^\"\\\\]*(\\\\.[^\"\\\\]*)*)\"")
+        for (match in regex.findAll(content)) {
+            result.add(match.groupValues[1].replace("\\\"", "\"").replace("\\\\", "\\"))
+        }
+        return result
     }
 
     private fun resolvePath(relativePath: String): File {

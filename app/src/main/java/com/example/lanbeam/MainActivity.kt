@@ -3,14 +3,21 @@ package com.example.lanbeam
 import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.ServiceConnection
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.IBinder
 import android.provider.OpenableColumns
 import android.provider.Settings
+import android.webkit.CookieManager
+import android.webkit.MimeTypeMap
+import android.webkit.URLUtil
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebView
@@ -40,6 +47,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.example.lanbeam.theme.LANBeamTheme
 import java.io.File
@@ -47,9 +56,31 @@ import java.util.Locale
 
 class MainActivity : ComponentActivity() {
 
-    private var server: LanBeamServer? = null
     private var webView: WebView? = null
     private var fileCallback: ValueCallback<Array<Uri>>? = null
+
+    // Service binding
+    private var lanBeamService: LanBeamService? = null
+    private var serviceBound = false
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+            val localBinder = binder as LanBeamService.LocalBinder
+            lanBeamService = localBinder.service
+            serviceBound = true
+            serverRunningState.value = lanBeamService?.isRunning == true
+            refreshUIState()
+            // Load WebView once service is connected
+            if (lanBeamService?.isRunning == true) {
+                webView?.loadUrl("http://127.0.0.1:${LanBeamService.HTTP_PORT}/")
+            }
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            lanBeamService = null
+            serviceBound = false
+            serverRunningState.value = false
+        }
+    }
 
     // Launcher for files to upload / choose via WebView
     private val webViewFilePickerLauncher = registerForActivityResult(
@@ -82,7 +113,7 @@ class MainActivity : ComponentActivity() {
     ) { result ->
         if (result.resultCode == RESULT_OK) {
             val intentData = result.data ?: return@registerForActivityResult
-            val sharedDir = server?.getSharedDir() ?: return@registerForActivityResult
+            val sharedDir = lanBeamService?.server?.getSharedDir() ?: return@registerForActivityResult
             var count = 0
 
             val clipData = intentData.clipData
@@ -102,6 +133,8 @@ class MainActivity : ComponentActivity() {
 
             if (count > 0) {
                 Toast.makeText(this, "Shared $count file(s)", Toast.LENGTH_SHORT).show()
+                // Notify WebSocket clients
+                lanBeamService?.wsServer?.broadcastFilesChanged()
                 refreshUIState()
             } else {
                 Toast.makeText(this, "Failed to share files", Toast.LENGTH_SHORT).show()
@@ -116,10 +149,19 @@ class MainActivity : ComponentActivity() {
         val granted = permissions[android.Manifest.permission.WRITE_EXTERNAL_STORAGE] == true
         if (granted) {
             Toast.makeText(this, "Storage permission granted", Toast.LENGTH_SHORT).show()
-            server?.getSharedDir() // Ensure folder created
+            lanBeamService?.server?.getSharedDir() // Ensure folder created
             refreshUIState()
         } else {
             Toast.makeText(this, "Using internal sandbox storage", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    // Notification permission launcher (Android 13+)
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (!granted) {
+            Toast.makeText(this, "Notification permission denied — server will still work", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -135,15 +177,20 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Init server settings
-        server = LanBeamServer(this, 8765)
+        // Init device name
         deviceNameState.value = getSavedDeviceName()
 
         // Request storage permissions on start
         checkAndRequestStoragePermissions()
 
-        // Start server automatically
+        // Request notification permission (Android 13+)
+        requestNotificationPermission()
+
+        // Start and bind to the foreground service
         startServer()
+
+        // Handle share intents
+        handleShareIntent(intent)
 
         setContent {
             LANBeamTheme {
@@ -157,26 +204,103 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // Handle share intents when activity is already running
+        handleShareIntent(intent)
+    }
+
     override fun onResume() {
         super.onResume()
         refreshUIState()
     }
 
     override fun onDestroy() {
+        // Unbind from service but DON'T stop it — service keeps running in background
+        if (serviceBound) {
+            unbindService(serviceConnection)
+            serviceBound = false
+        }
         super.onDestroy()
-        stopServer()
+    }
+
+    private fun handleShareIntent(intent: Intent?) {
+        if (intent == null) return
+        val action = intent.action ?: return
+
+        when (action) {
+            Intent.ACTION_SEND -> {
+                val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableExtra(Intent.EXTRA_STREAM)
+                }
+                if (uri != null) {
+                    handleIncomingFiles(listOf(uri))
+                }
+            }
+            Intent.ACTION_SEND_MULTIPLE -> {
+                val uris = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM)
+                }
+                if (!uris.isNullOrEmpty()) {
+                    handleIncomingFiles(uris)
+                }
+            }
+        }
+    }
+
+    private fun handleIncomingFiles(uris: List<Uri>) {
+        // Ensure service is running
+        if (lanBeamService?.isRunning != true) {
+            startServer()
+        }
+
+        val sharedDir = lanBeamService?.server?.getSharedDir()
+            ?: run {
+                // Service might not be bound yet — post to copy after binding
+                android.os.Handler(mainLooper).postDelayed({
+                    val dir = lanBeamService?.server?.getSharedDir() ?: return@postDelayed
+                    var count = 0
+                    uris.forEach { uri ->
+                        if (copyUriToFolder(this, uri, dir) != null) count++
+                    }
+                    if (count > 0) {
+                        Toast.makeText(this, "Added $count file(s) to LAN Beam", Toast.LENGTH_SHORT).show()
+                        lanBeamService?.wsServer?.broadcastFilesChanged()
+                        refreshUIState()
+                    }
+                }, 1500)
+                return
+            }
+
+        var count = 0
+        uris.forEach { uri ->
+            if (copyUriToFolder(this, uri, sharedDir) != null) count++
+        }
+        if (count > 0) {
+            Toast.makeText(this, "Added $count file(s) to LAN Beam", Toast.LENGTH_SHORT).show()
+            lanBeamService?.wsServer?.broadcastFilesChanged()
+            refreshUIState()
+        }
     }
 
     private fun startServer() {
         try {
-            if (server?.wasStarted() == false || serverRunningState.value == false) {
-                server?.start()
-                serverRunningState.value = true
-                ipAddressState.value = server?.getLocalIpAddress() ?: "127.0.0.1"
-                Toast.makeText(this, "Server started", Toast.LENGTH_SHORT).show()
-                webView?.loadUrl("http://127.0.0.1:8765/")
-                refreshUIState()
+            // Start the foreground service
+            val serviceIntent = Intent(this, LanBeamService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent)
+            } else {
+                startService(serviceIntent)
             }
+            // Bind to it to get references
+            bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
+            serverRunningState.value = true
         } catch (e: Exception) {
             e.printStackTrace()
             Toast.makeText(this, "Failed to start server: ${e.message}", Toast.LENGTH_LONG).show()
@@ -184,19 +308,37 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun stopServer() {
-        if (serverRunningState.value) {
-            server?.stop()
+        try {
+            if (serviceBound) {
+                unbindService(serviceConnection)
+                serviceBound = false
+            }
+            val serviceIntent = Intent(this, LanBeamService::class.java)
+            stopService(serviceIntent)
+            lanBeamService = null
             serverRunningState.value = false
-            Toast.makeText(this, "Server stopped", Toast.LENGTH_SHORT).show()
             webView?.loadUrl("about:blank")
+            Toast.makeText(this, "Server stopped", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
         }
     }
 
     private fun refreshUIState() {
-        ipAddressState.value = server?.getLocalIpAddress() ?: "127.0.0.1"
+        ipAddressState.value = lanBeamService?.server?.getLocalIpAddress() ?: "127.0.0.1"
         storagePermissionGrantedState.value = hasStoragePermission()
 
-        val sharedDir = server?.getSharedDir()
+        val sharedDir = lanBeamService?.server?.getSharedDir()
         if (sharedDir != null && sharedDir.exists()) {
             val list = sharedDir.listFiles()?.filter { !it.name.startsWith(".") } ?: emptyList()
             filesCountState.value = list.size
@@ -291,12 +433,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun clearSharedFiles() {
-        val sharedDir = server?.getSharedDir()
+        val sharedDir = lanBeamService?.server?.getSharedDir()
         if (sharedDir != null && sharedDir.exists()) {
             val deleted = sharedDir.deleteRecursively()
             sharedDir.mkdirs() // Recreate root
             if (deleted) {
                 Toast.makeText(this, "Cleared shared folder", Toast.LENGTH_SHORT).show()
+                lanBeamService?.wsServer?.broadcastFilesChanged()
                 refreshUIState()
             }
         }
@@ -522,7 +665,7 @@ class MainActivity : ComponentActivity() {
                                     .fillMaxWidth()
                                     .clickable {
                                         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                        val clip = ClipData.newPlainText("LAN Beam URL", "http://$ipAddress:8765")
+                                        val clip = ClipData.newPlainText("LAN Beam URL", "http://$ipAddress:${LanBeamService.HTTP_PORT}")
                                         clipboard.setPrimaryClip(clip)
                                         Toast.makeText(this@MainActivity, "URL Copied!", Toast.LENGTH_SHORT).show()
                                     }
@@ -538,7 +681,7 @@ class MainActivity : ComponentActivity() {
                                         fontWeight = FontWeight.Medium
                                     )
                                     Text(
-                                        text = "http://$ipAddress:8765",
+                                        text = "http://$ipAddress:${LanBeamService.HTTP_PORT}",
                                         color = Color(0xFF818CF8),
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold
@@ -658,6 +801,7 @@ class MainActivity : ComponentActivity() {
                                 settings.domStorageEnabled = true
                                 settings.allowFileAccess = true
                                 settings.allowContentAccess = true
+                                @Suppress("DEPRECATION")
                                 settings.databaseEnabled = true
 
                                 webViewClient = object : WebViewClient() {
@@ -693,7 +837,27 @@ class MainActivity : ComponentActivity() {
                                         return true
                                     }
                                 }
-                                loadUrl("http://127.0.0.1:8765/")
+
+                                // DownloadListener — handles all file downloads from WebView
+                                setDownloadListener { url, userAgent, contentDisposition, mimeType, contentLength ->
+                                    try {
+                                        val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
+                                        val request = android.app.DownloadManager.Request(Uri.parse(url)).apply {
+                                            setMimeType(mimeType)
+                                            addRequestHeader("User-Agent", userAgent)
+                                            setTitle(fileName)
+                                            setDescription("LAN Beam download")
+                                            setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                                            setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "LAN Beam/$fileName")
+                                        }
+                                        val dm = ctx.getSystemService(Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
+                                        dm.enqueue(request)
+                                        Toast.makeText(ctx, "⬇ Downloading: $fileName", Toast.LENGTH_SHORT).show()
+                                    } catch (e: Exception) {
+                                        Toast.makeText(ctx, "Download error: ${e.message}", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                                loadUrl("http://127.0.0.1:${LanBeamService.HTTP_PORT}/")
                             }
                         },
                         modifier = Modifier.fillMaxSize(),
