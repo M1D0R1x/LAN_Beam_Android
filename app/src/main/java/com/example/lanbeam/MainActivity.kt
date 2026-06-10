@@ -478,18 +478,31 @@ class MainActivity : ComponentActivity() {
 
                         // Start / Stop switch
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = if (serverRunning) "Live" else "Offline",
-                                color = if (serverRunning) Color(0xFF4ADE80) else Color(0xFFF87171),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(
+                                        if (serverRunning) Color(0x1A4ADE80)
+                                        else Color(0x1AF87171)
+                                    )
+                                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                            ) {
+                                Text(
+                                    text = if (serverRunning) "● Live" else "○ Offline",
+                                    color = if (serverRunning) Color(0xFF4ADE80) else Color(0xFFF87171),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
                             Switch(
                                 checked = serverRunning,
                                 onCheckedChange = { if (it) startServer() else stopServer() },
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = Color(0xFF818CF8),
-                                    checkedTrackColor = Color(0xFF1E1E28)
+                                    checkedTrackColor = Color(0xFF1E1E28),
+                                    uncheckedThumbColor = Color(0xFF8888A0),
+                                    uncheckedTrackColor = Color(0xFF1E1E28)
                                 )
                             )
                         }
@@ -499,20 +512,44 @@ class MainActivity : ComponentActivity() {
 
                     // Connection Information
                     if (serverRunning) {
-                        Text(
-                            text = "Connect at: http://$ipAddress:8765",
-                            color = Color(0xFF818CF8),
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier
-                                .clickable {
-                                    val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    val clip = ClipData.newPlainText("LAN Beam URL", "http://$ipAddress:8765")
-                                    clipboard.setPrimaryClip(clip)
-                                    Toast.makeText(this@MainActivity, "URL Copied!", Toast.LENGTH_SHORT).show()
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A26)),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                        val clip = ClipData.newPlainText("LAN Beam URL", "http://$ipAddress:8765")
+                                        clipboard.setPrimaryClip(clip)
+                                        Toast.makeText(this@MainActivity, "URL Copied!", Toast.LENGTH_SHORT).show()
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text(
+                                        text = "Connect at",
+                                        color = Color(0xFF8888A0),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        text = "http://$ipAddress:8765",
+                                        color = Color(0xFF818CF8),
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
-                                .padding(vertical = 4.dp)
-                        )
+                                Text(
+                                    text = "📋",
+                                    fontSize = 16.sp
+                                )
+                            }
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(10.dp))

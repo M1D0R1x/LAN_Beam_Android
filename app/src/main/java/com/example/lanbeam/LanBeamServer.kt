@@ -19,6 +19,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.HashMap
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 class LanBeamServer(private val context: Context, val port: Int) : NanoHTTPD(port) {
 
@@ -29,6 +30,10 @@ class LanBeamServer(private val context: Context, val port: Int) : NanoHTTPD(por
             "<html><body><h1>Error loading frontend</h1><p>${e.message}</p></body></html>"
         }
     }
+
+    private data class CachedDirInfo(val size: Long, val itemCount: Int, val timestamp: Long)
+    private val dirInfoCache = ConcurrentHashMap<String, CachedDirInfo>()
+    private val DIR_CACHE_TTL_MS = 10_000L // 10 seconds
 
     override fun serve(session: IHTTPSession): Response {
         if (session.method == Method.OPTIONS) {
@@ -51,13 +56,16 @@ class LanBeamServer(private val context: Context, val port: Int) : NanoHTTPD(por
         response.addHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
         response.addHeader("Access-Control-Allow-Headers", "*")
         response.addHeader("Access-Control-Expose-Headers", "Content-Length, Content-Disposition")
+        response.addHeader("Connection", "keep-alive")
     }
 
     private fun handleRequest(session: IHTTPSession): Response {
         val uri = session.uri
         return when {
             uri == "/" -> {
-                newFixedLengthResponse(Response.Status.OK, "text/html", htmlContent)
+                val resp = newFixedLengthResponse(Response.Status.OK, "text/html", htmlContent)
+                resp.addHeader("Cache-Control", "no-cache")
+                resp
             }
             uri == "/api/info" -> {
                 val ip = getLocalIpAddress()
@@ -146,11 +154,11 @@ class LanBeamServer(private val context: Context, val port: Int) : NanoHTTPD(por
                             r
                         }
                     } catch (e: Exception) {
-                        val fis = java.io.BufferedInputStream(FileInputStream(targetFile), 1024 * 1024)
+                        val fis = java.io.BufferedInputStream(FileInputStream(targetFile), 8 * 1024 * 1024)
                         newFixedLengthResponse(Response.Status.OK, mime, fis, totalSize)
                     }
                 } else {
-                    val fis = java.io.BufferedInputStream(FileInputStream(targetFile), 1024 * 1024)
+                    val fis = java.io.BufferedInputStream(FileInputStream(targetFile), 8 * 1024 * 1024)
                     newFixedLengthResponse(Response.Status.OK, mime, fis, totalSize)
                 }
 
@@ -195,7 +203,9 @@ class LanBeamServer(private val context: Context, val port: Int) : NanoHTTPD(por
                 val ip = getLocalIpAddress()
                 val url = "http://$ip:$port"
                 val qrBytes = generateQrCodePng(url)
-                newFixedLengthResponse(Response.Status.OK, "image/png", ByteArrayInputStream(qrBytes), qrBytes.size.toLong())
+                val resp = newFixedLengthResponse(Response.Status.OK, "image/png", ByteArrayInputStream(qrBytes), qrBytes.size.toLong())
+                resp.addHeader("Cache-Control", "public, max-age=60")
+                resp
             }
             uri == "/api/file" && session.method == Method.DELETE -> {
                 val pathParams = session.parameters["path"]
@@ -293,18 +303,34 @@ class LanBeamServer(private val context: Context, val port: Int) : NanoHTTPD(por
         return Pair(count, totalSize)
     }
 
-    private fun getDirectorySize(dir: File): Long {
+    private fun getCachedDirInfo(dir: File): CachedDirInfo {
+        val key = dir.absolutePath
+        val now = System.currentTimeMillis()
+        val cached = dirInfoCache[key]
+        if (cached != null && (now - cached.timestamp) < DIR_CACHE_TTL_MS) {
+            return cached
+        }
         var size: Long = 0
+        var count = 0
         dir.listFiles()?.forEach { file ->
-            if (file.isFile && !file.name.startsWith(".")) {
-                size += file.length()
+            if (!file.name.startsWith(".")) {
+                count++
+                if (file.isFile) {
+                    size += file.length()
+                }
             }
         }
-        return size
+        val info = CachedDirInfo(size, count, now)
+        dirInfoCache[key] = info
+        return info
+    }
+
+    private fun getDirectorySize(dir: File): Long {
+        return getCachedDirInfo(dir).size
     }
 
     private fun getDirectoryItemCount(dir: File): Int {
-        return dir.listFiles()?.count { !it.name.startsWith(".") } ?: 0
+        return getCachedDirInfo(dir).itemCount
     }
 
     private fun getFileType(name: String): String {
