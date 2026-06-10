@@ -39,9 +39,9 @@ This document records the changes made to the LAN Beam Android repository during
 
 ### 5. Version Maintenance & Outputs
 - Upgraded project configurations inside [build.gradle.kts](file:///Users/veera/Downloads/lan-beam-android/app/build.gradle.kts#L14-L15) from version `1.0` to `1.1` (versionCode = 2).
-- Compiled clean outputs via Gradle:
-  - **[LAN-Beam-v1.0.apk](file:///Users/veera/Downloads/lan-beam-android/LAN-Beam-v1.0.apk)**
-  - **[LAN-Beam-v1.1.apk](file:///Users/veera/Downloads/lan-beam-android/LAN-Beam-v1.1.apk)** (contains speed optimizations & UI redesign)
+- Compiled clean outputs via Gradle inside the **[apks/](file:///Users/veera/Downloads/lan-beam-android/apks)** folder:
+  - **[LAN-Beam-v1.0.apk](file:///Users/veera/Downloads/lan-beam-android/apks/LAN-Beam-v1.0.apk)**
+  - **[LAN-Beam-v1.1.apk](file:///Users/veera/Downloads/lan-beam-android/apks/LAN-Beam-v1.1.apk)** (contains speed optimizations & UI redesign)
 
 ---
 

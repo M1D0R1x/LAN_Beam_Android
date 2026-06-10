@@ -69,7 +69,7 @@ chmod +x gradlew
 The compiled APK will be located at:
 `app/build/outputs/apk/debug/app-debug.apk`
 
-For convenience, we copy the compiled output to the root directory as **`LAN-Beam-v1.0.apk`**.
+For convenience, we copy the compiled output to the **`apks/`** directory as **`apks/LAN-Beam-v1.1.apk`** (where you can find all versions of the compiled APKs).
 
 ---
 
