@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<title>LAN Beam</title>
+<meta name="theme-color" content="#0c0c10">
+<link rel="manifest" href="/manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#09090e;--card:rgba(22,22,30,0.45);--card-glowing:rgba(30,30,42,0.7);--card2:rgba(30,30,42,0.6);
+  --border:rgba(255,255,255,0.07);--border-hover:rgba(129,140,248,0.3);--fg:#f3f4f6;--muted:#9ca3af;
+  --primary:#818cf8;--primary-fg:#fff;--success:#4ade80;--danger:#f87171;--accent:#c084fc;
+  --radius:16px;--radius-sm:10px;
+}
+html{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--fg);-webkit-tap-highlight-color:transparent}
+body{
+  min-height:100dvh;
+  overflow-x:hidden;
+  background:radial-gradient(circle at 10% 20%, rgba(129,140,248,0.08), transparent 40%),
+              radial-gradient(circle at 90% 80%, rgba(192,132,252,0.06), transparent 45%),
+              #09090e;
+}
+a{color:inherit;text-decoration:none}
+button{font:inherit;border:0;cursor:pointer;background:0 0;color:inherit;transition:all 0.2s ease}
+input{font:inherit;border:0;outline:0;background:0 0;color:inherit}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}
+
+.app{max-width:520px;margin:0 auto;padding:20px 16px 110px}
+.nav{
+  position:fixed;
+  bottom:16px;
+  left:16px;
+  right:16px;
+  max-width:488px;
+  margin:0 auto;
+  display:flex;
+  justify-content:space-around;
+  padding:6px;
+  border-radius:20px;
+  background:rgba(12,12,16,.75);
+  backdrop-filter:blur(24px) saturate(1.4);
+  -webkit-backdrop-filter:blur(24px) saturate(1.4);
+  border:1px solid rgba(255,255,255,0.06);
+  box-shadow:0 12px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.02) inset;
+  z-index:50;
+}
+.nav-btn{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:3px;
+  padding:8px 14px;
+  border-radius:14px;
+  font-size:10px;
+  font-weight:600;
+  color:var(--muted);
+}
+.nav-btn.active{
+  color:var(--primary);
+  background:rgba(129,140,248,.12);
+  box-shadow:0 0 0 1px rgba(129,140,248,0.1) inset;
+}
+.nav-btn svg{width:18px;height:18px}
+
+.page{display:none;animation:fadeIn .3s cubic-bezier(0.4, 0, 0.2, 1)}.page.active{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+
+/* Home */
+.badge{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:6px 14px;
+  border-radius:99px;
+  border:1px solid var(--border);
+  background:rgba(22,22,30,0.6);
+  font-size:11px;
+  font-weight:600;
+  color:var(--muted);
+  backdrop-filter:blur(4px);
+}
+.badge .dot{width:6px;height:6px;border-radius:50%;background:var(--success);box-shadow:0 0 10px var(--success)}
+.hero-title{
+  font-size:clamp(2.2rem,9vw,3rem);
+  font-weight:800;
+  background:linear-gradient(135deg,#fff 30%,var(--muted) 100%);
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+  letter-spacing:-.03em;
+  margin-top:16px;
+}
+.hero-sub{font-size:14px;color:var(--muted);margin-top:8px;max-width:340px;line-height:1.5}
+.qr-wrap{
+  position:relative;
+  margin:32px auto 0;
+  width:220px;
+  height:220px;
+  border-radius:24px;
+  border:1px solid var(--border);
+  background:linear-gradient(135deg, rgba(22,22,30,0.6) 0%, rgba(12,12,16,0.8) 100%);
+  padding:16px;
+  box-shadow:0 12px 40px rgba(129,140,248,0.18), 0 0 0 1px rgba(255,255,255,0.03) inset;
+  backdrop-filter:blur(8px);
+}
+.qr-wrap img{width:100%;height:100%;border-radius:12px;object-fit:contain}
+.qr-pulse{position:absolute;inset:-6px;border-radius:28px;border:2px solid var(--primary);opacity:.4;animation:pulse 2.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.15;transform:scale(1)}50%{opacity:.6;transform:scale(1.03);filter:drop-shadow(0 0 8px var(--primary))}}
+.url-btn{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin:18px auto 0;
+  padding:11px 18px;
+  border-radius:var(--radius-sm);
+  border:1px solid var(--border);
+  background:rgba(22,22,30,0.5);
+  font-family:'SF Mono',monospace;
+  font-size:13px;
+  color:var(--primary);
+  box-shadow:0 4px 12px rgba(0,0,0,0.1);
+}
+.url-btn:hover{
+  border-color:var(--primary);
+  background:rgba(129,140,248,0.05);
+}
+.url-btn:active{transform:scale(.97)}
+.stats-row{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:8px;
+  margin-top:24px;
+  padding:14px;
+  border-radius:var(--radius);
+  border:1px solid var(--border);
+  background:rgba(22,22,30,0.4);
+  backdrop-filter:blur(8px);
+}
+.stat{text-align:center;padding:4px 0}.stat-val{font-size:16px;font-weight:700;color:#fff}.stat-label{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-top:3px}
+.action-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px}
+.action-btn{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  padding:15px;
+  border-radius:var(--radius);
+  font-size:13px;
+  font-weight:700;
+}
+.action-btn:active{transform:scale(.96)}
+.action-btn.primary{
+  background:linear-gradient(135deg, var(--primary) 0%, #6366f1 100%);
+  color:var(--primary-fg);
+  box-shadow:0 6px 20px rgba(129,140,248,.35);
+}
+.action-btn.primary:hover{
+  box-shadow:0 8px 24px rgba(129,140,248,.5);
+  transform:translateY(-1px);
+}
+.action-btn.secondary{
+  border:1px solid var(--border);
+  background:rgba(22,22,30,0.55);
+}
+.action-btn.secondary:hover{
+  border-color:var(--border-hover);
+  background:rgba(22,22,30,0.75);
+}
+.how-it-works{
+  margin-top:24px;
+  padding:16px;
+  border-radius:var(--radius);
+  border:1px solid var(--border);
+  background:rgba(22,22,30,0.3);
+  text-align:left;
+}
+.how-it-works h3{font-size:13px;font-weight:700;margin-bottom:10px;color:var(--fg)}
+.how-it-works .step{display:flex;gap:10px;padding:7px 0;font-size:12px;color:var(--muted);align-items:center}
+.how-it-works .step-num{width:20px;height:20px;border-radius:6px;background:rgba(129,140,248,.15);color:var(--primary);display:grid;place-items:center;font-weight:700;font-size:11px;flex-shrink:0}
+
+/* Files */
+.toolbar{display:flex;gap:8px;margin-bottom:14px}
+.search-box{
+  flex:1;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:11px 14px;
+  border-radius:var(--radius-sm);
+  border:1px solid var(--border);
+  background:rgba(22,22,30,0.5);
+  transition:all 0.2s ease;
+}
+.search-box:focus-within{
+  border-color:var(--primary);
+  box-shadow:0 0 0 1px var(--primary);
+}
+.search-box input{flex:1;font-size:14px}
+.search-box input::placeholder{color:var(--muted)}
+.breadcrumb{display:flex;align-items:center;gap:4px;padding:6px 0;font-size:13px;color:var(--muted);flex-wrap:wrap;margin-bottom:10px}
+.breadcrumb span{cursor:pointer;transition:.15s;font-weight:500}.breadcrumb span:hover{color:var(--fg)}
+.breadcrumb .sep{opacity:.4}
+.file-list{display:flex;flex-direction:column;gap:8px}
+.file-item{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:14px 16px;
+  border-radius:var(--radius);
+  border:1px solid var(--border);
+  background:var(--card);
+  transition:all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor:pointer;
+  backdrop-filter:blur(8px);
+}
+.file-item:hover{
+  border-color:var(--primary);
+  background:var(--card-glowing);
+  transform:translateY(-2px);
+  box-shadow:0 8px 24px rgba(129,140,248,0.08);
+}
+.file-item:active{transform:scale(.98)}
+.file-icon{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;font-size:18px;flex-shrink:0;box-shadow:0 4px 10px rgba(0,0,0,0.15)}
+.file-icon.video{background:rgba(129,140,248,.15);color:var(--primary)}
+.file-icon.audio{background:rgba(192,132,252,.15);color:var(--accent)}
+.file-icon.image{background:rgba(74,222,128,.15);color:var(--success)}
+.file-icon.folder{background:rgba(250,204,21,.15);color:#facc15}
+.file-icon.pdf{background:rgba(248,113,113,.15);color:var(--danger)}
+.file-icon.archive{background:rgba(96,165,250,.15);color:#60a5fa}
+.file-icon.apk{background:rgba(74,222,128,.15);color:var(--success)}
+.file-icon.doc{background:rgba(136,136,160,.12);color:var(--muted)}
+.file-info{flex:1;min-width:0}
+.file-name{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.file-meta{font-size:11px;color:var(--muted);margin-top:2px}
+.dl-btn{padding:8px;border-radius:8px;color:var(--muted);transition:.15s;flex-shrink:0}
+.dl-btn:hover{color:var(--primary);background:rgba(129,140,248,.1)}
+.del-btn{padding:8px;border-radius:8px;color:var(--muted);transition:.15s;flex-shrink:0;font-size:14px}
+.del-btn:hover{color:var(--danger);background:rgba(248,113,113,.1)}
+.empty{text-align:center;padding:50px 16px;color:var(--muted);font-size:14px}
+.storage-bar{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:12px 16px;
+  border-radius:var(--radius);
+  border:1px solid var(--border);
+  background:rgba(22,22,30,0.5);
+  margin-bottom:16px;
+  font-size:12px;
+  color:var(--muted);
+  backdrop-filter:blur(8px);
+}
+.storage-bar strong{color:var(--fg)}
+.clear-btn{
+  margin-left:auto;
+  padding:6px 12px;
+  border-radius:8px;
+  font-size:11px;
+  font-weight:700;
+  color:var(--danger);
+  border:1px solid rgba(248,113,113,.25);
+}
+.clear-btn:hover{background:rgba(248,113,113,.15)}
+
+/* Upload */
+.drop-zone{
+  border:2px dashed rgba(129, 140, 248, 0.25);
+  border-radius:var(--radius);
+  padding:44px 20px;
+  text-align:center;
+  color:var(--muted);
+  background:rgba(22,22,30,0.25);
+  transition:all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor:pointer;
+}
+.drop-zone:hover{
+  border-color:var(--primary);
+  background:rgba(129,140,248,0.04);
+  transform:translateY(-2px);
+}
+.drop-zone.over{border-color:var(--success);background:rgba(74,222,128,.06)}
+.drop-zone h3{font-size:16px;font-weight:700;color:var(--fg);margin-bottom:6px}
+.drop-zone p{font-size:13px}
+.upload-list{margin-top:16px;display:flex;flex-direction:column;gap:8px}
+.upload-item{padding:14px;border-radius:var(--radius);border:1px solid var(--border);background:var(--card)}
+.upload-item .top-row{display:flex;align-items:center;gap:10px}
+.upload-item .name{flex:1;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.upload-item .size{font-size:11px;color:var(--muted)}
+.upload-item .status{font-size:11px;font-weight:700}
+.upload-item .status.done{color:var(--success)}.upload-item .status.fail{color:var(--danger)}.upload-item .status.uploading{color:var(--primary)}
+.progress-wrap{margin-top:10px}
+.progress-bar{width:100%;height:6px;border-radius:99px;background:rgba(255,255,255,0.05);overflow:hidden;box-shadow:inset 0 1px 2px rgba(0,0,0,0.4)}
+.progress-fill{
+  height:100%;
+  border-radius:99px;
+  background:linear-gradient(90deg,var(--primary),var(--accent));
+  transition:width .15s cubic-bezier(0.4, 0, 0.2, 1);
+  width:0;
+  box-shadow:0 0 8px rgba(129, 140, 248, 0.4);
+}
+.progress-stats{display:flex;justify-content:space-between;margin-top:5px;font-size:10px;color:var(--muted)}
+.upload-btn{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  width:100%;
+  margin-top:14px;
+  padding:15px;
+  border-radius:var(--radius);
+  background:linear-gradient(135deg, var(--primary) 0%, #6366f1 100%);
+  color:var(--primary-fg);
+  font-size:14px;
+  font-weight:700;
+  box-shadow:0 6px 20px rgba(129,140,248,.35);
+  transition:all 0.2s ease;
+}
+.upload-btn:hover:not(:disabled){
+  transform:translateY(-1px);
+  box-shadow:0 8px 24px rgba(129,140,248,.5);
+}
+.upload-btn:active{transform:scale(.97)}.upload-btn:disabled{opacity:.4;pointer-events:none}
+
+/* Download overlay */
+.dl-overlay{
+  position:fixed;
+  inset:0;
+  z-index:100;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:rgba(0,0,0,.65);
+  backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+  padding:16px;
+  animation:fadeIn .25s ease;
+}
+.dl-card{
+  width:100%;
+  max-width:440px;
+  padding:24px;
+  border-radius:24px;
+  border:1px solid rgba(255,255,255,0.08);
+  background:rgba(22,22,30,0.85);
+  backdrop-filter:blur(32px);
+  -webkit-backdrop-filter:blur(32px);
+  box-shadow:0 24px 64px rgba(0,0,0,0.65), 0 0 0 1px rgba(255,255,255,0.04) inset;
+  animation:scaleUp .3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes scaleUp{from{transform:scale(.95);opacity:0}to{transform:none;opacity:1}}
+.dl-card .dl-title{font-size:16px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff}
+.dl-card .dl-subtitle{font-size:12px;color:var(--muted);margin-top:4px}
+.dl-card .progress-bar{margin-top:18px;height:8px}
+.dl-card .dl-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:18px;text-align:center}
+.dl-card .dl-stat-val{font-size:14px;font-weight:800;color:#fff}
+.dl-card .dl-stat-label{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-top:2px}
+
+/* Settings */
+.settings-group{border-radius:var(--radius);border:1px solid var(--border);background:rgba(22,22,30,0.5);overflow:hidden;margin-bottom:16px;backdrop-filter:blur(8px)}
+.settings-row{display:flex;align-items:center;gap:12px;padding:15px 18px}
+.settings-row+.settings-row{border-top:1px solid var(--border)}
+.settings-row .label{flex:1;font-size:14px;font-weight:600}
+.settings-row .val{font-size:13px;color:var(--primary);font-family:'SF Mono',monospace}
+.section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:24px 0 10px;padding-left:4px}
+
+/* Toast */
+.toast-wrap{position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:999;display:flex;flex-direction:column;gap:6px;pointer-events:none}
+.toast{
+  padding:12px 20px;
+  border-radius:12px;
+  background:rgba(30,30,42,0.9);
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+  border:1px solid rgba(255,255,255,0.06);
+  font-size:13px;
+  font-weight:600;
+  animation:toastIn .3s cubic-bezier(0.34, 1.56, 0.64, 1),toastOut .3s ease 2.7s forwards;
+  pointer-events:auto;
+  box-shadow:0 12px 32px rgba(0,0,0,0.5);
+}
+@keyframes toastIn{from{opacity:0;transform:translateY(-16px)}to{opacity:1;transform:none}}
+@keyframes toastOut{to{opacity:0;transform:translateY(-10px)}}
+
+.loader{display:flex;justify-content:center;padding:40px}.spinner{width:28px;height:28px;border:3px solid rgba(255,255,255,0.05);border-top-color:var(--primary);border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.page-title{font-size:24px;font-weight:800;margin-bottom:20px;letter-spacing:-.02em}
+</style>
+</head>
+<body>
+
+<div class="toast-wrap" id="toasts"></div>
+
+<div class="app">
+  <!-- HOME -->
+  <div class="page active" id="page-home">
+    <div style="display:flex;flex-direction:column;align-items:center;text-align:center">
+      <div class="badge"><span class="dot"></span> Server live</div>
+      <h1 class="hero-title">LAN Beam</h1>
+      <p class="hero-sub">Share files between any devices on your Wi-Fi — no internet needed</p>
+      <div class="qr-wrap"><div class="qr-pulse"></div><img id="qr-img" alt="QR Code"></div>
+      <button class="url-btn" id="url-btn" onclick="copyUrl()">
+        <span id="url-text">loading…</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+      </button>
+      <div class="stats-row">
+        <div class="stat"><div class="stat-val" id="s-files">—</div><div class="stat-label">Files</div></div>
+        <div class="stat"><div class="stat-val" id="s-size">—</div><div class="stat-label">Shared</div></div>
+        <div class="stat"><div class="stat-val" id="s-devices">—</div><div class="stat-label">Devices</div></div>
+      </div>
+      <div class="action-grid">
+        <button class="action-btn primary" onclick="go('files')">📥 Receive Files</button>
+        <button class="action-btn secondary" onclick="go('send')">📤 Send Files</button>
+      </div>
+      <div class="how-it-works">
+        <h3>📡 How it works</h3>
+        <div class="step"><span class="step-num">1</span> All devices connect to the same Wi-Fi</div>
+        <div class="step"><span class="step-num">2</span> One device runs the server (this Mac)</div>
+        <div class="step"><span class="step-num">3</span> Other devices open the URL or scan QR</div>
+        <div class="step"><span class="step-num">4</span> <strong style="color:var(--fg)">Receive</strong> = download files from server</div>
+        <div class="step"><span class="step-num">5</span> <strong style="color:var(--fg)">Send</strong> = upload files to server for others</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RECEIVE / FILES -->
+  <div class="page" id="page-files">
+    <h2 class="page-title">📥 Receive Files</h2>
+    <div class="toolbar">
+      <div class="search-box">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" placeholder="Search files…" id="search-input" oninput="renderFiles()">
+      </div>
+    </div>
+    <div class="breadcrumb" id="breadcrumb"></div>
+    <div id="file-list"></div>
+  </div>
+
+  <!-- SEND / UPLOAD -->
+  <div class="page" id="page-send">
+    <h2 class="page-title">📤 Send Files</h2>
+    <p style="font-size:13px;color:var(--muted);margin:-8px 0 16px">Files you send are saved on the server — other devices can download them from <strong style="color:var(--fg)">Receive</strong></p>
+    <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-pick').click()">
+      <h3>📤 Tap to select files</h3>
+      <p>or drag & drop files here</p>
+    </div>
+    <input type="file" id="file-pick" multiple hidden>
+    <div class="upload-list" id="upload-list"></div>
+    <button class="upload-btn" id="upload-btn" disabled onclick="startUpload()">Send Files</button>
+  </div>
+
+  <!-- RECEIVED (uploaded files on server) -->
+  <div class="page" id="page-received">
+    <h2 class="page-title">📦 Received Files</h2>
+    <div class="storage-bar" id="storage-bar">
+      <span>💾 Storage: <strong id="recv-size">—</strong> (<span id="recv-count">0</span> files)</span>
+      <button class="clear-btn" onclick="clearUploads()">Clear All</button>
+    </div>
+    <div id="received-list"></div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="page" id="page-settings">
+    <h2 class="page-title">Settings</h2>
+    <div class="section-title">Server Info</div>
+    <div class="settings-group">
+      <div class="settings-row"><span class="label">IP Address</span><span class="val" id="set-ip">—</span></div>
+      <div class="settings-row"><span class="label">Port</span><span class="val" id="set-port">—</span></div>
+      <div class="settings-row"><span class="label">Hostname</span><span class="val" id="set-host">—</span></div>
+      <div class="settings-row"><span class="label">Shared Path</span><span class="val" id="set-path" style="font-size:11px;word-break:break-all">—</span></div>
+      <div class="settings-row"><span class="label">Connection</span><span class="val" id="set-conn">—</span></div>
+    </div>
+    <div class="section-title">About</div>
+    <div class="settings-group">
+      <div class="settings-row"><span class="label">All transfers are local</span><span class="val">No internet</span></div>
+      <div class="settings-row"><span class="label">Sent files use real disk space</span><span class="val">Not metadata</span></div>
+    </div>
+  </div>
+</div>
+
+<nav class="nav">
+  <button class="nav-btn active" data-page="home" onclick="go('home')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .7-1.5l7-5.6a2 2 0 0 1 2.6 0l7 5.6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+    Home
+  </button>
+  <button class="nav-btn" data-page="files" onclick="go('files')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    Receive
+  </button>
+  <button class="nav-btn" data-page="send" onclick="go('send')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    Send
+  </button>
+  <button class="nav-btn" data-page="received" onclick="go('received')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-6"/><rect x="2" y="4" width="20" height="8" rx="2"/><path d="M12 12v4"/><path d="m8 16 4-4 4 4"/></svg>
+    Received
+  </button>
+  <button class="nav-btn" data-page="settings" onclick="go('settings')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/></svg>
+    Settings
+  </button>
+</nav>
+
+<script>
+let info=null,currentPath="/",files=[],uploadQueue=[];
+const token=localStorage.getItem("lanbeam_token")||"";
+
+function af(url,opts={}){if(token)opts.headers={...(opts.headers||{}),Authorization:"Bearer "+token};return fetch(url,opts)}
+
+function go(page){
+  document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
+  document.getElementById("page-"+page).classList.add("active");
+  document.querySelectorAll(".nav-btn").forEach(b=>b.classList.toggle("active",b.dataset.page===page));
+  if(page==="files"&&files.length===0)loadFiles();
+  if(page==="received")loadReceived();
+  if(page==="settings"&&info)fillSettings();
+}
+
+function toast(msg){const el=document.createElement("div");el.className="toast";el.textContent=msg;document.getElementById("toasts").appendChild(el);setTimeout(()=>el.remove(),3200)}
+
+function fmt(b){if(b==null)return"—";const u=["B","KB","MB","GB","TB"];let i=0,n=b;while(n>=1024&&i<u.length-1){n/=1024;i++}return(n>=100||i===0?Math.round(n):n.toFixed(1))+" "+u[i]}
+function fmtSpeed(bps){if(bps<1024)return Math.round(bps)+" B/s";if(bps<1048576)return(bps/1024).toFixed(1)+" KB/s";return(bps/1048576).toFixed(1)+" MB/s"}
+function fmtTime(s){if(!s||!isFinite(s))return"—";if(s<60)return Math.ceil(s)+"s";if(s<3600)return Math.floor(s/60)+"m "+Math.ceil(s%60)+"s";return Math.floor(s/3600)+"h "+Math.floor((s%3600)/60)+"m"}
+
+function copyUrl(){if(!info)return;navigator.clipboard?.writeText(info.url);toast("URL copied!")}
+
+const icons={video:"🎬",audio:"🎵",image:"🖼️",folder:"📁",pdf:"📄",archive:"📦",apk:"📱",doc:"📃"};
+
+async function loadInfo(){
+  try{
+    const r=await af("/api/info");
+    if(r.status===401){showAuth();return}
+    info=await r.json();
+    document.getElementById("qr-img").src="/api/qr";
+    document.getElementById("url-text").textContent=info.url;
+    document.getElementById("s-files").textContent=info.filesShared;
+    document.getElementById("s-size").textContent=fmt(info.totalSize);
+    document.getElementById("s-devices").textContent=info.devicesConnected;
+    fillSettings();
+  }catch(e){console.error(e)}
+}
+
+function fillSettings(){
+  if(!info)return;
+  document.getElementById("set-ip").textContent=info.ip;
+  document.getElementById("set-port").textContent=info.port;
+  document.getElementById("set-host").textContent=info.hostname;
+  document.getElementById("set-path").textContent=info.sharedPath;
+  document.getElementById("set-conn").textContent=info.connectionType;
+}
+
+function showAuth(){
+  document.querySelector(".app").innerHTML=`
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:80dvh;text-align:center">
+      <div style="width:72px;height:72px;border-radius:18px;background:rgba(129,140,248,.15);display:grid;place-items:center;font-size:32px;margin-bottom:20px">🔒</div>
+      <h1 style="font-size:24px;font-weight:800">LAN Beam</h1>
+      <p style="font-size:14px;color:var(--muted);margin-top:4px">Enter PIN to access files</p>
+      <input id="pin-input" type="password" inputmode="numeric" maxlength="8" placeholder="••••"
+        style="width:200px;margin-top:24px;padding:14px;text-align:center;font-size:24px;letter-spacing:.4em;border-radius:var(--radius);border:1px solid var(--border);background:var(--card)"
+        onkeydown="if(event.key==='Enter')doAuth()">
+      <p id="pin-err" style="color:var(--danger);font-size:13px;margin-top:8px;min-height:20px"></p>
+      <button onclick="doAuth()" style="margin-top:8px;padding:12px 32px;border-radius:var(--radius);background:var(--primary);color:#fff;font-weight:600;font-size:14px;box-shadow:0 4px 16px rgba(129,140,248,.3)">Unlock</button>
+    </div>`;
+  setTimeout(()=>document.getElementById("pin-input")?.focus(),100);
+}
+async function doAuth(){
+  const pin=document.getElementById("pin-input").value;
+  const r=await fetch("/api/auth",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({pin})});
+  if(r.ok){localStorage.setItem("lanbeam_token",pin);location.reload()}
+  else{document.getElementById("pin-err").textContent="Wrong PIN";document.getElementById("pin-input").value=""}
+}
+
+// ─── Files ───
+async function loadFiles(){
+  const el=document.getElementById("file-list");
+  el.innerHTML='<div class="loader"><div class="spinner"></div></div>';
+  try{const r=await af("/api/files?path="+encodeURIComponent(currentPath));files=await r.json();renderFiles()}
+  catch(e){el.innerHTML='<div class="empty">Failed to load files</div>'}
+}
+
+function renderFiles(){
+  const q=(document.getElementById("search-input")?.value||"").toLowerCase();
+  const visible=q?files.filter(f=>f.name.toLowerCase().includes(q)):files;
+  const parts=currentPath==="/"?[]:currentPath.split("/").filter(Boolean);
+  let bc='<span onclick="navTo(\'/\')">Home</span>',path="";
+  for(const p of parts){path+="/"+p;bc+='<span class="sep">/</span><span onclick="navTo(\''+path+'\')">'+p+'</span>'}
+  document.getElementById("breadcrumb").innerHTML=bc;
+  const el=document.getElementById("file-list");
+  if(!visible.length){el.innerHTML='<div class="empty">'+(q?"No matching files":"This folder is empty")+'</div>';return}
+  visible.sort((a,b)=>{if(a.type==="folder"&&b.type!=="folder")return-1;if(a.type!=="folder"&&b.type==="folder")return 1;return a.name.localeCompare(b.name)});
+  el.innerHTML=visible.map(f=>{
+    const icon=icons[f.type]||"📃";
+    const meta=f.type==="folder"?fmt(f.size)+" · "+(f.items??0)+" items":fmt(f.size)+" · "+f.modified;
+    const fullPath=(currentPath==="/"?"":currentPath)+"/"+f.name;
+    const esc=s=>s.replace(/'/g,"\\'");
+    const click=f.type==="folder"?'onclick="navTo(\''+esc(fullPath)+'\')"':'onclick="downloadWithProgress(\''+esc(fullPath)+'\',\''+esc(f.name)+'\','+(f.size||0)+')"';
+    const dlBtn=f.type!=="folder"?'<button class="dl-btn" onclick="event.stopPropagation();downloadWithProgress(\''+esc(fullPath)+'\',\''+esc(f.name)+'\','+(f.size||0)+')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>':'<span class="dl-btn" style="opacity:.3">→</span>';
+    return'<div class="file-item" '+click+'><div class="file-icon '+f.type+'">'+icon+'</div><div class="file-info"><div class="file-name">'+f.name+'</div><div class="file-meta">'+meta+'</div></div>'+dlBtn+'</div>';
+  }).join("");
+}
+function navTo(p){currentPath=p;document.getElementById("search-input").value="";loadFiles()}
+
+// ─── Download with progress ───
+async function downloadWithProgress(filePath,fileName,totalSize){
+  const dlUrl="/api/download?path="+encodeURIComponent(filePath)+(token?"&token="+encodeURIComponent(token):"");
+  if(totalSize > 30 * 1024 * 1024){
+    toast("Large file: downloading directly...");
+    const a=document.createElement("a");a.href=dlUrl;a.download=fileName;
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    return;
+  }
+  const overlay=document.createElement("div");overlay.className="dl-overlay";
+  overlay.innerHTML=`<div class="dl-card"><div class="dl-title">⬇️ ${fileName}</div><div class="dl-subtitle">${fmt(totalSize)} — Downloading…</div><div class="progress-bar"><div class="progress-fill" id="dl-fill"></div></div><div class="dl-stats"><div><div class="dl-stat-val" id="dl-pct">0%</div><div class="dl-stat-label">Progress</div></div><div><div class="dl-stat-val" id="dl-speed">—</div><div class="dl-stat-label">Speed</div></div><div><div class="dl-stat-val" id="dl-done">0 B</div><div class="dl-stat-label">Downloaded</div></div><div><div class="dl-stat-val" id="dl-eta">—</div><div class="dl-stat-label">ETA</div></div></div></div>`;
+  document.body.appendChild(overlay);
+  const fill=overlay.querySelector("#dl-fill"),pctEl=overlay.querySelector("#dl-pct"),speedEl=overlay.querySelector("#dl-speed"),doneEl=overlay.querySelector("#dl-done"),etaEl=overlay.querySelector("#dl-eta"),subtitle=overlay.querySelector(".dl-subtitle");
+  try{
+    const res=await af(dlUrl);if(!res.ok)throw new Error(res.statusText);
+    const cl=parseInt(res.headers.get("content-length")||totalSize||"0"),reader=res.body.getReader(),chunks=[];
+    let recv=0,t0=Date.now(),lt=t0,lr=0;
+    while(true){const{done,value}=await reader.read();if(done)break;chunks.push(value);recv+=value.length;
+      const now=Date.now(),el=(now-t0)/1000,re=(now-lt)/1000;let spd=0;
+      if(re>=.3){spd=(recv-lr)/re;lt=now;lr=recv}else if(el>0)spd=recv/el;
+      const pct=cl>0?recv/cl*100:0,rem=spd>0&&cl>0?(cl-recv)/spd:0;
+      fill.style.width=pct.toFixed(1)+"%";pctEl.textContent=Math.round(pct)+"%";speedEl.textContent=fmtSpeed(spd);doneEl.textContent=fmt(recv);etaEl.textContent=fmtTime(rem);
+    }
+    fill.style.width="100%";fill.style.background="var(--success)";pctEl.textContent="100%";
+    speedEl.textContent=fmtSpeed(recv/((Date.now()-t0)/1000));etaEl.textContent="Done!";subtitle.textContent=fmt(recv)+" — Complete ✓";
+    const blob=new Blob(chunks),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=fileName;document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+    toast("Downloaded: "+fileName);setTimeout(()=>overlay.remove(),1500);
+  }catch(e){subtitle.textContent="Download failed ✗";fill.style.background="var(--danger)";toast("Failed: "+e.message);setTimeout(()=>overlay.remove(),2000)}
+}
+
+// ─── Upload with progress ───
+const dropZone=document.getElementById("drop-zone"),filePick=document.getElementById("file-pick");
+dropZone.addEventListener("dragover",e=>{e.preventDefault();dropZone.classList.add("over")});
+dropZone.addEventListener("dragleave",()=>dropZone.classList.remove("over"));
+dropZone.addEventListener("drop",e=>{e.preventDefault();dropZone.classList.remove("over");addFiles(e.dataTransfer.files)});
+filePick.addEventListener("change",()=>addFiles(filePick.files));
+
+function addFiles(fl){for(const f of fl){if(!uploadQueue.find(q=>q.file.name===f.name&&q.file.size===f.size))uploadQueue.push({file:f,status:"pending",progress:0,speed:0,eta:0})}renderUploadList()}
+
+function renderUploadList(){
+  const el=document.getElementById("upload-list");
+  el.innerHTML=uploadQueue.map(q=>{
+    const sc=q.status==="done"?"done":q.status==="error"?"fail":q.status==="uploading"?"uploading":"";
+    const st=q.status==="done"?"✓ Done":q.status==="error"?"✗ Failed":q.status==="uploading"?Math.round(q.progress)+"%":"Ready";
+    const sp=q.status==="uploading"||q.status==="done";
+    return'<div class="upload-item"><div class="top-row"><span class="name">'+q.file.name+'</span><span class="size">'+fmt(q.file.size)+'</span><span class="status '+sc+'">'+st+'</span></div>'+(sp?'<div class="progress-wrap"><div class="progress-bar"><div class="progress-fill" style="width:'+q.progress+'%;'+(q.status==="done"?"background:var(--success)":"")+'"></div></div><div class="progress-stats"><span>'+fmt(q.file.size*q.progress/100)+' / '+fmt(q.file.size)+'</span><span>'+(q.status==="uploading"?fmtSpeed(q.speed)+' · '+fmtTime(q.eta)+' left':'Complete')+'</span></div></div>':'')+'</div>';
+  }).join("");
+  document.getElementById("upload-btn").disabled=!uploadQueue.length||uploadQueue.every(q=>q.status==="done");
+}
+
+async function startUpload(){
+  document.getElementById("upload-btn").disabled=true;
+  for(const q of uploadQueue){
+    if(q.status==="done")continue;q.status="uploading";q.progress=0;renderUploadList();
+    await new Promise(resolve=>{
+      const xhr=new XMLHttpRequest(),t0=Date.now();let lt=t0,ll=0;
+      xhr.upload.onprogress=e=>{if(!e.lengthComputable)return;const now=Date.now(),re=(now-lt)/1000;q.progress=e.loaded/e.total*100;if(re>=.3){q.speed=(e.loaded-ll)/re;lt=now;ll=e.loaded}else{const el=(now-t0)/1000;if(el>0)q.speed=e.loaded/el}q.eta=q.speed>0?(e.total-e.loaded)/q.speed:0;renderUploadList()};
+      xhr.onload=()=>{q.status=xhr.status>=200&&xhr.status<300?"done":"error";q.progress=q.status==="done"?100:q.progress;renderUploadList();resolve()};
+      xhr.onerror=()=>{q.status="error";renderUploadList();resolve()};
+      const form=new FormData();form.append("file",q.file);form.append("dest","/");
+      xhr.open("POST","/api/upload");if(token)xhr.setRequestHeader("Authorization","Bearer "+token);xhr.send(form);
+    });
+  }
+  toast("All files sent!");loadInfo();loadFiles();
+}
+
+// ─── Received files (uploads on server) ───
+async function loadReceived(){
+  const el=document.getElementById("received-list");
+  el.innerHTML='<div class="loader"><div class="spinner"></div></div>';
+  try{
+    const[filesRes,sizeRes]=await Promise.all([af("/api/files?path=/uploads"),af("/api/uploads/size")]);
+    const recvFiles=await filesRes.json();
+    const sizeData=await sizeRes.json();
+    document.getElementById("recv-size").textContent=fmt(sizeData.totalSize);
+    document.getElementById("recv-count").textContent=sizeData.count;
+    if(!recvFiles.length){el.innerHTML='<div class="empty">No received files yet.<br>When someone sends files, they appear here.</div>';return}
+    el.innerHTML=recvFiles.map(f=>{
+      const icon=icons[f.type]||"📃";
+      const fullPath="/uploads/"+f.name;
+      const esc=s=>s.replace(/'/g,"\\'");
+      return'<div class="file-item"><div class="file-icon '+f.type+'">'+icon+'</div><div class="file-info"><div class="file-name">'+f.name+'</div><div class="file-meta">'+fmt(f.size)+' · '+f.modified+'</div></div><button class="dl-btn" onclick="event.stopPropagation();downloadWithProgress(\''+esc(fullPath)+'\',\''+esc(f.name)+'\','+(f.size||0)+')"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button><button class="del-btn" onclick="event.stopPropagation();deleteFile(\''+esc(fullPath)+'\')">🗑️</button></div>';
+    }).join("");
+  }catch(e){el.innerHTML='<div class="empty">Could not load received files</div>'}
+}
+
+async function deleteFile(path){
+  if(!confirm("Delete this file?"))return;
+  try{await af("/api/file?path="+encodeURIComponent(path),{method:"DELETE"});toast("Deleted!");loadReceived();loadInfo()}
+  catch(e){toast("Delete failed")}
+}
+
+async function clearUploads(){
+  if(!confirm("Delete ALL received files? This frees disk space but can't be undone."))return;
+  try{
+    const r=await af("/api/files?path=/uploads");const files=await r.json();
+    for(const f of files)await af("/api/file?path="+encodeURIComponent("/uploads/"+f.name),{method:"DELETE"});
+    toast("All received files cleared!");loadReceived();loadInfo();
+  }catch(e){toast("Clear failed")}
+}
+
+// ─── Auto-refresh ───
+setInterval(()=>{
+  if(document.getElementById("page-files").classList.contains("active")){
+    af("/api/files?path="+encodeURIComponent(currentPath)).then(r=>r.json()).then(nf=>{
+      if(JSON.stringify(nf.map(f=>f.name).sort())!==JSON.stringify(files.map(f=>f.name).sort())){files=nf;renderFiles()}
+    }).catch(()=>{});
+  }
+  if(document.getElementById("page-received").classList.contains("active"))loadReceived();
+},5000);
+
+loadInfo();
+</script>
+</body>
+</html>
