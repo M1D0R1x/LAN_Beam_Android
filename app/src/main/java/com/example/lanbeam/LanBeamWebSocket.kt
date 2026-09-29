@@ -1,5 +1,6 @@
 package com.example.lanbeam
 
+import com.example.lanbeam.server.HttpUtil
 import fi.iki.elonen.NanoWSD
 import java.io.IOException
 import java.util.concurrent.CopyOnWriteArrayList
@@ -17,13 +18,11 @@ class LanBeamWebSocket(port: Int) : NanoWSD(port) {
     }
 
     fun broadcastUploadComplete(fileName: String) {
-        val escaped = fileName.replace("\"", "\\\"")
-        broadcast("""{"type":"upload_complete","file":"$escaped"}""")
+        broadcast("""{"type":"upload_complete","file":${HttpUtil.jsonStr(fileName)}}""")
     }
 
     fun broadcastFileDeleted(fileName: String) {
-        val escaped = fileName.replace("\"", "\\\"")
-        broadcast("""{"type":"file_deleted","file":"$escaped"}""")
+        broadcast("""{"type":"file_deleted","file":${HttpUtil.jsonStr(fileName)}}""")
     }
 
     private fun broadcast(message: String) {

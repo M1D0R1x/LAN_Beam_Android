@@ -1,4 +1,6 @@
-package com.example.lanbeam
+package com.example.lanbeam.legacy
+// Verbatim copy of the v2.1 server (master 5fabdb1), kept ONLY so TransferBenchmarkTest can
+// measure before/after on the same machine. Not shipped. Only change: binds 127.0.0.1 for tests.
 
 import android.content.Context
 import android.graphics.Bitmap
@@ -26,7 +28,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
-class LanBeamServer(private val context: Context, val port: Int) : NanoHTTPD(port) {
+class LegacyLanBeamServer(private val context: Context, val port: Int) : NanoHTTPD("127.0.0.1", port) {
 
     // Event hooks for WebSocket broadcasting
     var onFileChanged: (() -> Unit)? = null
@@ -282,7 +284,7 @@ class LanBeamServer(private val context: Context, val port: Int) : NanoHTTPD(por
                 } else {
                     if (end >= totalSize) end = totalSize - 1
                     val contentLength = end - start + 1
-                    val rangeStream = RangeInputStream(targetFile, start, contentLength)
+                    val rangeStream = LegacyRangeInputStream(targetFile, start, contentLength)
                     val r = newFixedLengthResponse(Response.Status.PARTIAL_CONTENT, mime, rangeStream, contentLength)
                     r.addHeader("Content-Range", "bytes $start-$end/$totalSize")
                     r.addHeader("Content-Length", contentLength.toString())
@@ -717,7 +719,7 @@ class LanBeamServer(private val context: Context, val port: Int) : NanoHTTPD(por
     }
 }
 
-class RangeInputStream(private val file: File, private val start: Long, private val length: Long) : java.io.InputStream() {
+class LegacyRangeInputStream(private val file: File, private val start: Long, private val length: Long) : java.io.InputStream() {
     private val raf = java.io.RandomAccessFile(file, "r")
     private var bytesRead = 0L
 
