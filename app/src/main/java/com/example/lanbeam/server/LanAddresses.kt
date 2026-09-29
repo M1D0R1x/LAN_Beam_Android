@@ -4,13 +4,15 @@ import java.net.Inet4Address
 import java.net.NetworkInterface
 
 /**
- * Picks the address other devices can actually reach.
+ * Picks the address other devices can actually reach, and labels it correctly.
  *
- * The old code returned the first non-loopback IPv4 of ANY interface. On a phone that is on a
- * router's Wi-Fi with mobile data still up ("Mobile data always active" is on by default), that is
- * often the cellular interface (rmnet*, ccmni*), the 464XLAT shim (v4-rmnet*, clat4 = 192.0.0.4)
- * or a VPN tunnel (tun*) — so the QR code/URL pointed at an address no LAN peer can reach, while
- * the same phone acting as a hotspot happened to list its hotspot interface first and worked.
+ * v2.1 returned the first non-loopback IPv4 of ANY interface — often mobile data (rmnet*, ccmni*),
+ * the 464XLAT shim (192.0.0.4) or a VPN — so the QR code pointed nowhere reachable.
+ *
+ * Interface NAMES are not reliable for telling Wi-Fi from hotspot (vendors reuse wlan0/wlan1 for
+ * either, depending on STA+AP concurrency), so the primary signal is the system's own view:
+ * the IPs Android reports for the Wi-Fi network we are a client of, and for cellular/VPN
+ * networks. Name heuristics are only the fallback when that view is unavailable.
  */
 object LanAddresses {
 
@@ -20,10 +22,19 @@ object LanAddresses {
 
     data class LanAddress(val ip: String, val iface: String, val kind: Kind)
 
+    /** What ConnectivityManager says about the networks this phone is on (IPv4 strings). */
+    data class SystemView(
+        val wifiClientIps: Set<String> = emptySet(),
+        val ethernetIps: Set<String> = emptySet(),
+        /** Cellular and VPN addresses: never reachable from the LAN. */
+        val unreachableIps: Set<String> = emptySet(),
+    )
+
     private val EXCLUDED_PREFIXES = listOf(
         "rmnet", "r_rmnet", "ccmni", "v4-", "clat", "tun", "ppp", "ipsec", "dummy", "lo",
-        "radio", "seth", "pdp", "wwan", "usb_rmnet", "epdg", "ifb", "sit", "ip6tnl", "ip_vti", "gre",
+        "radio", "seth", "pdp", "wwan", "usb_rmnet", "epdg", "ifb", "sit", "ip6tnl", "ip_vti", "gre", "wg",
     )
+    private val HOTSPOT_PREFIXES = listOf("wlan", "ap", "swlan", "softap", "wigig", "p2p")
 
     fun isUsable(c: Candidate): Boolean {
         val name = c.iface.lowercase()
@@ -41,22 +52,31 @@ object LanAddresses {
         return p.size == 4 && (p[0] == 10 || (p[0] == 172 && p[1] in 16..31) || (p[0] == 192 && p[1] == 168))
     }
 
-    fun kindOf(iface: String, wifiClientIface: String?): Kind {
-        val n = iface.lowercase()
+    fun kindOf(c: Candidate, view: SystemView?): Kind {
+        val n = c.iface.lowercase()
+        if (view != null) {
+            if (c.ip in view.wifiClientIps) return Kind.WIFI
+            if (c.ip in view.ethernetIps) return Kind.ETHERNET
+            // A Wi-Fi-radio address that is not our Wi-Fi client address is the network we host.
+            if (HOTSPOT_PREFIXES.any { n.startsWith(it) }) return Kind.HOTSPOT
+            if (n.startsWith("eth")) return Kind.ETHERNET
+            return Kind.OTHER
+        }
         return when {
-            wifiClientIface != null && n == wifiClientIface.lowercase() -> Kind.WIFI
             n.startsWith("ap") || n.startsWith("swlan") || n.startsWith("softap") || n.startsWith("wigig") -> Kind.HOTSPOT
-            n.startsWith("wlan") -> if (wifiClientIface == null && n == "wlan0") Kind.WIFI else Kind.HOTSPOT
+            n == "wlan0" -> Kind.WIFI
+            n.startsWith("wlan") -> Kind.HOTSPOT
             n.startsWith("eth") -> Kind.ETHERNET
             else -> Kind.OTHER
         }
     }
 
     /** Usable candidates, best first: Wi-Fi client > hotspot > Ethernet > other; private ranges first. */
-    fun rank(candidates: List<Candidate>, wifiClientIface: String?): List<LanAddress> =
+    fun rank(candidates: List<Candidate>, view: SystemView?): List<LanAddress> =
         candidates.filter(::isUsable)
+            .filter { view == null || it.ip !in view.unreachableIps }
             .distinctBy { it.ip }
-            .map { LanAddress(it.ip, it.iface, kindOf(it.iface, wifiClientIface)) }
+            .map { LanAddress(it.ip, it.iface, kindOf(it, view)) }
             .sortedWith(compareBy<LanAddress>({ it.kind.ordinal }, { if (isPrivate(it.ip)) 0 else 1 }, { it.iface }))
 
     fun enumerate(): List<Candidate> = try {

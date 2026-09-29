@@ -71,7 +71,7 @@ const ctx = vm.createContext({
   requestAnimationFrame: f => setImmediate(f), confirm: () => true,
   fetch: (u, o) => fetch(new URL(u, BASE), o),
   location: new URL(BASE), WebSocket: class { constructor() { this.readyState = 3; } close() {} },
-  window: { addEventListener() {} }, navigator: {},
+  window: { addEventListener() {}, matchMedia: () => ({ matches: false, addEventListener() {} }) }, navigator: {},
 });
 vm.runInContext(script, ctx);
 

@@ -91,7 +91,8 @@ class LanBeamService : Service() {
     private val ticker = object : Runnable {
         override fun run() {
             TransferTracker.reapIdle()
-            TransferTracker.prune()
+            // Finished rows linger briefly, then the transfers card disappears on its own.
+            TransferTracker.prune(keepMs = 5_000)
             updateNotification()
             main.postDelayed(this, 2_000)
         }
@@ -102,7 +103,12 @@ class LanBeamService : Service() {
         createNotificationChannel()
         env = AndroidServerEnv(this, object : AndroidServerEnv.Events {
             override fun filesChanged() = LanBeamState.filesChanged()
-            override fun uploadComplete(name: String) { wsServer?.broadcastUploadComplete(name) }
+            override fun uploadComplete(name: String) {
+                wsServer?.broadcastUploadComplete(name)
+                // Make it show up in Files / Gallery right away.
+                val f = java.io.File(env.uploadsDir(), name)
+                runCatching { android.media.MediaScannerConnection.scanFile(this@LanBeamService, arrayOf(f.absolutePath), null, null) }
+            }
             override fun fileDeleted(name: String) { wsServer?.broadcastFileDeleted(name) }
         })
         TransferTracker.onActiveCountChanged = { count -> main.post { onActiveTransfers(count) } }
@@ -307,7 +313,7 @@ class LanBeamService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val b = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_sys_upload_done)
+            .setSmallIcon(R.drawable.ic_stat_beam)
             .setContentIntent(openPending)
             .setOngoing(true)
             .setSilent(true)

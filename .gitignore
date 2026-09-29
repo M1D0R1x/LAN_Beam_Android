@@ -16,3 +16,8 @@ local.properties
 
 
 .idea/
+
+# Release signing (never commit)
+keystore.properties
+*.jks
+*.keystore
