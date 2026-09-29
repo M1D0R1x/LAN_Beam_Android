@@ -73,6 +73,28 @@ For convenience, we copy the compiled output to the **`apks/`** directory as **`
 
 ---
 
+## 🔧 v2.2 transfer engine (what changed and why)
+
+| Symptom | Root cause (v2.1) | Fix |
+|---|---|---|
+| Large downloads stall at ~90-99 % (.mov on iPhone, resumed downloads) | Range (206) responses advertised the **full** file size in `Content-Length`, so any resumed/ranged request waited for bytes that never came | Length set once, from the range; `If-Range`/`ETag`, suffix ranges, 416; HEAD no longer sends a body |
+| Uploads slow; >2 GB uploads silently fail | NanoHTTPD multipart parsing: 512-byte reads, file written 3 times, `mmap` of the whole body (fails > 2 GB, HTTP 500 shown as success) | Resumable raw chunk uploads (`/api/upload/chunk`, 8 MB), written once into place, auto-retry/resume after drops |
+| Transfers slow down with the screen off | No wake lock / Wi-Fi lock; 5 s socket timeout | Partial wake lock + Wi-Fi high-perf/low-latency locks while bytes move; 30 s timeout |
+| Works on hotspot, fails on the same router Wi-Fi | URL/QR used the first IPv4 of any interface: often mobile data (`rmnet`), 464XLAT (`192.0.0.4`) or VPN (`tun`) | Addresses ranked from the actual Wi-Fi client / hotspot interface; all shown as chips. Router **AP/client isolation** still blocks device-to-device traffic: explained in-app |
+| App closes after sharing a file into it | Share-sheet copy ran on the main thread (ANR on big files); foreground-service promise not kept on repeat starts; Android 15 6-hour dataSync timeout | Copy runs in the service on a worker thread with the URI grant; `startForeground()` on every start; `onTimeout()` handled |
+
+API additions: `GET/POST/DELETE /api/upload/chunk?id=&name=&offset=&total=`, `PUT /api/upload/raw?name=` (e.g. `curl -T file`), `GET /api/ping`. The old multipart `/api/upload` still works.
+
+### Verifying
+
+```bash
+./gradlew testDebugUnitTest                                   # server, ranges, resume, legacy bug repros
+./gradlew testDebugUnitTest --tests '*TransferBenchmarkTest*' -Dlanbeam.bench=512   # v2.1 vs v2.2 on loopback
+scripts/lanbeam-bench.sh http://PHONE_IP:8765 512             # real numbers on your Wi-Fi
+```
+
+---
+
 ## 🔒 Permissions & Security
 
 - **Internet & Wi-Fi Permissions**: Needed to bind the web server port (`8765`) and discover the device's local IP address.

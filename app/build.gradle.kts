@@ -11,8 +11,8 @@ android {
         applicationId = "com.example.lanbeam"
         minSdk = 24
         targetSdk = 36
-        versionCode = 5
-        versionName = "2.1"
+        versionCode = 6
+        versionName = "2.2"
     }
 
     buildTypes {
@@ -35,6 +35,18 @@ android {
     packaging {
       resources {
         excludes += "/META-INF/{AL2.0,LGPL2.1}"
+      }
+    }
+
+    testOptions {
+      // The server tests run the real NanoHTTPD stack on the JVM; android.* calls that are not
+      // on that path (MimeTypeMap, Environment) just return defaults instead of throwing.
+      unitTests.isReturnDefaultValues = true
+      unitTests.all {
+        it.systemProperty("lanbeam.bench", System.getProperty("lanbeam.bench") ?: "")
+        it.systemProperty("lanbeam.serve", System.getProperty("lanbeam.serve") ?: "")
+        it.maxHeapSize = "1g"
+        it.testLogging { showStandardStreams = true }
       }
     }
 }
