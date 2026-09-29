@@ -17,32 +17,54 @@ import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.net.Inet4Address
 
-/** Where shared and received files live. Public Download/LANBeam when allowed, app storage otherwise. */
+/**
+ * Where files live, without the All-files-access permission Google Play restricts:
+ *  - Shared: LAN Beam's own copies of files you chose to share -> app storage (never visible to
+ *    other apps, removed on uninstall; originals are untouched).
+ *  - Received: what other devices send -> the public Download/LANBeam folder, so it shows up in
+ *    Files/Gallery. Android 11+ lets an app create files there by path without any permission;
+ *    Android 10 uses legacy storage and <= 9 needs WRITE_EXTERNAL_STORAGE. If the public folder
+ *    is not writable for any reason we fall back to app storage rather than fail uploads.
+ */
 object StorageDirs {
-    fun hasAllFilesAccess(context: Context): Boolean =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Environment.isExternalStorageManager()
-        } else {
-            context.checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
-        }
+    const val PUBLIC_FOLDER = "LANBeam"
 
-    private fun dir(context: Context, name: String): File {
-        val f = if (hasAllFilesAccess(context)) {
-            File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "LANBeam/$name")
-        } else {
-            File(context.getExternalFilesDir(null) ?: context.filesDir, name)
-        }
-        if (!f.exists()) f.mkdirs()
-        return f
+    fun needsLegacyPermission(context: Context): Boolean =
+        Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q &&
+            context.checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
+
+    private fun privateDir(context: Context, name: String) =
+        File(context.getExternalFilesDir(null) ?: context.filesDir, name).also { if (!it.exists()) it.mkdirs() }
+
+    @Volatile private var publicOk: Boolean? = null
+
+    private fun publicReceived(): File =
+        File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), PUBLIC_FOLDER)
+
+    fun shared(context: Context) = privateDir(context, "Shared")
+
+    fun uploads(context: Context): File {
+        if (needsLegacyPermission(context)) return privateDir(context, "Uploads")
+        val dir = publicReceived()
+        val ok = publicOk ?: runCatching {
+            dir.mkdirs()
+            val probe = File(dir, ".lanbeam-probe")
+            probe.writeText("ok")
+            probe.delete()
+            true
+        }.getOrDefault(false).also { publicOk = it }
+        return if (ok) dir else privateDir(context, "Uploads")
     }
 
-    fun shared(context: Context) = dir(context, "Shared")
-    fun uploads(context: Context) = dir(context, "Uploads")
+    fun isPublic(context: Context) = uploads(context).absolutePath.startsWith(publicReceived().absolutePath)
 
-    /** Human-readable location, for the UI. */
-    fun describe(context: Context): String =
-        if (hasAllFilesAccess(context)) "Download/LANBeam" else "app storage (Android/data)"
+    /** Human-readable location of received files, for the UI. */
+    fun describeReceived(context: Context): String =
+        if (isPublic(context)) "Download/$PUBLIC_FOLDER" else "LAN Beam's app storage"
+
+    fun resetProbe() { publicOk = null }
 }
 
 object DeviceName {
@@ -77,20 +99,30 @@ object Qr {
 }
 
 object Network {
-    /** Interface name of the Wi-Fi network this phone is a CLIENT of, if any. */
-    fun wifiClientInterface(context: Context): String? = try {
+    /** Android's own view of which IPs belong to Wi-Fi (client), Ethernet, cellular and VPN. */
+    fun systemView(context: Context): LanAddresses.SystemView? = try {
         val cm = context.getSystemService(ConnectivityManager::class.java)
+        val wifi = HashSet<String>()
+        val eth = HashSet<String>()
+        val bad = HashSet<String>()
         @Suppress("DEPRECATION")
-        cm.allNetworks.firstNotNullOfOrNull { n ->
-            val caps = cm.getNetworkCapabilities(n) ?: return@firstNotNullOfOrNull null
-            if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) cm.getLinkProperties(n)?.interfaceName else null
+        for (n in cm.allNetworks) {
+            val caps = cm.getNetworkCapabilities(n) ?: continue
+            val ips = cm.getLinkProperties(n)?.linkAddresses.orEmpty()
+                .mapNotNull { (it.address as? Inet4Address)?.hostAddress }
+            when {
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) || caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> bad += ips
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> wifi += ips
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> eth += ips
+            }
         }
+        LanAddresses.SystemView(wifi, eth, bad)
     } catch (_: Exception) {
         null
     }
 
     fun addresses(context: Context): List<LanAddresses.LanAddress> =
-        LanAddresses.rank(LanAddresses.enumerate(), wifiClientInterface(context))
+        LanAddresses.rank(LanAddresses.enumerate(), systemView(context))
 }
 
 class AndroidServerEnv(private val context: Context, private val events: Events) : ServerEnv {

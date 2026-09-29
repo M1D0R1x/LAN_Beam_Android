@@ -44,8 +44,8 @@ This app turns your Android device into a local Web/File server. Other devices (
 - **UI Framework**: Modern **Jetpack Compose** (Material 3) with full edge-to-edge styling.
 - **QR Code Engine**: `com.google.zxing:core` to generate scan-to-connect QR codes on the fly.
 - **File System**:
-  - *Shared Directory*: Files you pick to share (`Download/LANBeam/Shared` or App Internal sandbox if storage permission is not granted).
-  - *Uploads Directory*: Files sent to the phone (`Download/LANBeam/Uploads` or App Internal sandbox).
+  - *Shared*: LAN Beam's own copies of files you pick to share (app-private storage; originals untouched).
+  - *Received*: files other devices send, saved to the public `Download/LANBeam` folder (visible in Files/Gallery).
 
 ---
 
@@ -64,6 +64,8 @@ chmod +x gradlew
 
 # Build the debug APK
 ./gradlew clean assembleDebug
+# Play Store bundle (signed if keystore.properties exists; see store/PLAY_STORE.md)
+./gradlew bundleRelease
 ```
 
 The compiled APK will be located at:
@@ -98,8 +100,9 @@ scripts/lanbeam-bench.sh http://PHONE_IP:8765 512             # real numbers on 
 ## 🔒 Permissions & Security
 
 - **Internet & Wi-Fi Permissions**: Needed to bind the web server port (`8765`) and discover the device's local IP address.
-- **All Files Access (`MANAGE_EXTERNAL_STORAGE`)**: Required on Android 11+ to share/read files outside the app's private sandbox (specifically in `Downloads/LANBeam`).
-- **Sandbox Fallback**: If permissions are denied, the app automatically falls back to internal sandbox directories, ensuring it functions safely without requesting risky permissions.
+- **No All-files access** (removed in 2.3 for Google Play): received files go to `Download/LANBeam`, which Android 11+ allows without a permission. Android 10 and older ask for storage access once, on the welcome screen.
+- **Notifications** (Android 13+): transfer progress and a Stop button. Asked once on the welcome screen.
+- **Anyone on the same network can open the link while sharing is on.** Turn sharing off when done. See [PRIVACY.md](PRIVACY.md).
 
 ---
 

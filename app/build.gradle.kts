@@ -1,24 +1,49 @@
+import java.util.Properties
+
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.compose.compiler)
-  alias(libs.plugins.kotlin.serialization)
 }
+
+// Release signing comes from keystore.properties (git-ignored) or LANBEAM_* environment variables
+// (CI). Without either, release builds are left unsigned instead of failing.
+val signingProps = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+fun signingValue(key: String, env: String): String? = signingProps.getProperty(key) ?: System.getenv(env)
 
 android {
     namespace = "com.example.lanbeam"
     compileSdk = 36
     defaultConfig {
-        applicationId = "com.example.lanbeam"
+        // Play rejects com.example.* ids. This is the permanent store identity: never change it
+        // after the first upload. (The Kotlin namespace below can stay as is.)
+        applicationId = "io.github.m1d0r1x.lanbeam"
         minSdk = 24
         targetSdk = 36
-        versionCode = 6
-        versionName = "2.2"
+        versionCode = 7
+        versionName = "2.3"
+    }
+
+    signingConfigs {
+        create("release") {
+            val store = signingValue("storeFile", "LANBEAM_KEYSTORE")
+            if (store != null) {
+                storeFile = rootProject.file(store)
+                storePassword = signingValue("storePassword", "LANBEAM_KEYSTORE_PASSWORD")
+                keyAlias = signingValue("keyAlias", "LANBEAM_KEY_ALIAS")
+                keyPassword = signingValue("keyPassword", "LANBEAM_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (signingConfigs.getByName("release").storeFile != null) signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {
@@ -88,11 +113,6 @@ dependencies {
   androidTestImplementation(libs.androidx.test.ext.junit)
   androidTestImplementation(libs.androidx.test.runner)
   androidTestImplementation(libs.androidx.test.espresso.core)
-
-  // Navigation
-  implementation(libs.androidx.navigation3.ui)
-  implementation(libs.androidx.navigation3.runtime)
-  implementation(libs.androidx.lifecycle.viewmodel.navigation3)
 
   // Embeddable HTTP Server and QR Code generator
   implementation("org.nanohttpd:nanohttpd:2.3.1")

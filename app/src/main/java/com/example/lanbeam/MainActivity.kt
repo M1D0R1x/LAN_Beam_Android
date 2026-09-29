@@ -27,6 +27,8 @@ import com.example.lanbeam.ui.AppActions
 import com.example.lanbeam.ui.AppViewModel
 import com.example.lanbeam.ui.FileItem
 import com.example.lanbeam.ui.LanBeamApp
+import com.example.lanbeam.ui.PermissionInfo
+import com.example.lanbeam.ui.WelcomeScreen
 import java.io.File
 import kotlin.concurrent.thread
 
@@ -41,22 +43,39 @@ class MainActivity : ComponentActivity(), AppActions {
         }
     }
 
-    private val legacyStorageLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+    /** All runtime permissions in one system prompt, asked once from the welcome screen. */
+    private val permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         vm.onResume()
+        vm.finishOnboarding()
+        LanBeamService.start(this)
     }
 
-    private val notificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    private fun runtimePermissions(): Array<String> = buildList {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) add(android.Manifest.permission.POST_NOTIFICATIONS)
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) {
+            add(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+            add(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        }
+    }.filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }.toTypedArray()
+
+    private fun completeOnboarding() {
+        val missing = runtimePermissions()
+        if (missing.isEmpty()) {
+            vm.finishOnboarding()
+            LanBeamService.start(this)
+        } else {
+            permissionLauncher.launch(missing)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        requestNotificationPermission()
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R && !StorageDirs.hasAllFilesAccess(this)) {
-            legacyStorageLauncher.launch(arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE, android.Manifest.permission.WRITE_EXTERNAL_STORAGE))
-        }
-
-        LanBeamService.start(this)
+        // First launch shows the welcome screen, which explains and asks for permissions before
+        // anything starts. Afterwards (or when files arrive from the share sheet) start right away.
+        val isShare = intent?.action == Intent.ACTION_SEND || intent?.action == Intent.ACTION_SEND_MULTIPLE
+        if (vm.onboarded.value || isShare) LanBeamService.start(this)
         // Only on a fresh launch: after rotation / process restore the same share intent is
         // delivered again and would import the files twice.
         if (savedInstanceState == null) handleShareIntent(intent)
@@ -68,14 +87,22 @@ class MainActivity : ComponentActivity(), AppActions {
                 val shared by vm.shared.collectAsStateWithLifecycle()
                 val received by vm.received.collectAsStateWithLifecycle()
                 val deviceName by vm.deviceName.collectAsStateWithLifecycle()
-                val hasAllFiles by vm.hasAllFiles.collectAsStateWithLifecycle()
-                LanBeamApp(
+                val needsLegacyStorage by vm.needsLegacyStorage.collectAsStateWithLifecycle()
+                val receivedLocation by vm.receivedLocation.collectAsStateWithLifecycle()
+                val onboarded by vm.onboarded.collectAsStateWithLifecycle()
+                if (!onboarded) {
+                    WelcomeScreen(
+                        permissions = PermissionInfo.forThisDevice(),
+                        onContinue = ::completeOnboarding,
+                    )
+                } else LanBeamApp(
                     status = status,
                     deviceName = deviceName,
                     transfers = transfers,
                     shared = shared,
                     received = received,
-                    needsFileAccessPrompt = !hasAllFiles && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R,
+                    needsFileAccessPrompt = needsLegacyStorage,
+                    receivedLocation = receivedLocation,
                     onStart = vm::start,
                     onStop = vm::stop,
                     onRefreshNetwork = vm::refreshAddresses,
@@ -126,14 +153,6 @@ class MainActivity : ComponentActivity(), AppActions {
     private fun Intent.streamExtras(): List<Uri> =
         (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java)
         else @Suppress("DEPRECATION") getParcelableArrayListExtra(Intent.EXTRA_STREAM)).orEmpty()
-
-    private fun requestNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(this, android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
-            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-        }
-    }
 
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
 
@@ -201,15 +220,13 @@ class MainActivity : ComponentActivity(), AppActions {
         }
     }
 
+    /** Android 10 and older only: storage permission to save received files in Download. */
     override fun requestFileAccess() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            try {
-                startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName")))
-            } catch (e: Exception) {
-                startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
-            }
-        } else {
-            legacyStorageLauncher.launch(arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE, android.Manifest.permission.WRITE_EXTERNAL_STORAGE))
-        }
+        val missing = runtimePermissions()
+        if (missing.isNotEmpty()) permissionLauncher.launch(missing) else openAppSettings()
+    }
+
+    private fun openAppSettings() {
+        runCatching { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null))) }
     }
 }

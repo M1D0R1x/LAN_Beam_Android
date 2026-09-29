@@ -35,8 +35,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _deviceName = MutableStateFlow(DeviceName.get(app))
     val deviceName: StateFlow<String> = _deviceName.asStateFlow()
 
-    private val _hasAllFiles = MutableStateFlow(StorageDirs.hasAllFilesAccess(app))
-    val hasAllFiles: StateFlow<Boolean> = _hasAllFiles.asStateFlow()
+    private val _needsLegacyStorage = MutableStateFlow(StorageDirs.needsLegacyPermission(app))
+    val needsLegacyStorage: StateFlow<Boolean> = _needsLegacyStorage.asStateFlow()
+
+    private val _receivedLocation = MutableStateFlow(StorageDirs.describeReceived(app))
+    val receivedLocation: StateFlow<String> = _receivedLocation.asStateFlow()
+
+    private val prefs = app.getSharedPreferences("lanbeam_prefs", android.content.Context.MODE_PRIVATE)
+    private val _onboarded = MutableStateFlow(prefs.getBoolean("onboarded_v1", false))
+    val onboarded: StateFlow<Boolean> = _onboarded.asStateFlow()
+
+    fun finishOnboarding() {
+        prefs.edit().putBoolean("onboarded_v1", true).apply()
+        _onboarded.value = true
+    }
 
     init {
         viewModelScope.launch { LanBeamState.filesVersion.collect { refreshFiles() } }
@@ -45,7 +57,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val ctx get() = getApplication<Application>()
 
     fun onResume() {
-        _hasAllFiles.value = StorageDirs.hasAllFilesAccess(ctx)
+        StorageDirs.resetProbe()
+        _needsLegacyStorage.value = StorageDirs.needsLegacyPermission(ctx)
+        _receivedLocation.value = StorageDirs.describeReceived(ctx)
         refreshAddresses()
         refreshFiles()
     }

@@ -19,8 +19,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -75,6 +73,7 @@ import androidx.compose.ui.unit.dp
 import com.example.lanbeam.Format
 import com.example.lanbeam.LanBeamState
 import com.example.lanbeam.Qr
+import com.example.lanbeam.server.LanAddresses
 import com.example.lanbeam.server.TransferTracker
 
 /** Everything the screen can ask the host activity to do (intents, pickers, settings). */
@@ -97,6 +96,7 @@ fun LanBeamApp(
     shared: List<FileItem>,
     received: List<FileItem>,
     needsFileAccessPrompt: Boolean,
+    receivedLocation: String,
     onStart: () -> Unit,
     onStop: () -> Unit,
     onRefreshNetwork: () -> Unit,
@@ -119,12 +119,16 @@ fun LanBeamApp(
             TopAppBar(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
                 title = {
-                    Column {
-                        Text("LAN Beam", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            deviceName, style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        AppLogo(36.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text("LAN Beam", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                deviceName, style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                 },
                 actions = {
@@ -140,7 +144,7 @@ fun LanBeamApp(
                             DropdownMenuItem(text = { Text("Trouble connecting?") }, onClick = { menuOpen = false; showHelp = true })
                             DropdownMenuItem(text = { Text("Send LAN Beam app") }, onClick = { menuOpen = false; actions.shareApp() })
                             if (needsFileAccessPrompt) {
-                                DropdownMenuItem(text = { Text("Allow file access") }, onClick = { menuOpen = false; actions.requestFileAccess() })
+                                DropdownMenuItem(text = { Text("Allow saving to Downloads") }, onClick = { menuOpen = false; actions.requestFileAccess() })
                             }
                             if (shared.isNotEmpty()) {
                                 DropdownMenuItem(text = { Text("Stop sharing all files") }, onClick = { menuOpen = false; confirmClear = true })
@@ -182,8 +186,17 @@ fun LanBeamApp(
                     Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Received · ${received.size}") })
                 }
             }
-            if (tab == 0 && needsFileAccessPrompt) {
+            if (tab == 1 && needsFileAccessPrompt) {
                 item(key = "perm") { StorageNotice(actions::requestFileAccess) }
+            }
+            if (tab == 1 && received.isNotEmpty()) {
+                item(key = "where") {
+                    Text(
+                        "Saved in $receivedLocation · tap a file to open it",
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                    )
+                }
             }
             val list = if (tab == 0) shared else received
             if (list.isEmpty()) {
@@ -191,7 +204,7 @@ fun LanBeamApp(
                     EmptyState(
                         if (tab == 0) "Nothing shared yet" else "Nothing received yet",
                         if (tab == 0) "Add files here, or share them to LAN Beam from any app. Devices that open the link can download them."
-                        else "Files other devices send from their browser appear here.",
+                        else "Files other devices send from their browser are saved to $receivedLocation and appear here.",
                     )
                 }
             } else {
@@ -203,7 +216,8 @@ fun LanBeamApp(
                             if (tab == 0) {
                                 IconButton(onClick = { onDelete(item) }) { Icon(Icons.Default.Close, contentDescription = "Stop sharing ${item.name}") }
                             } else {
-                                IconButton(onClick = { actions.shareFile(item) }) { Icon(Icons.Default.Share, contentDescription = "Share ${item.name}") }
+                                TextButton(onClick = { actions.openFile(item) }) { Text("Open") }
+                                IconButton(onClick = { actions.shareFile(item) }) { Icon(Icons.Default.Share, contentDescription = "Share or save ${item.name}") }
                                 IconButton(onClick = { confirmDelete = item }) { Icon(Icons.Default.Delete, contentDescription = "Delete ${item.name}") }
                             }
                         },
@@ -249,7 +263,7 @@ private fun ConnectCard(status: LanBeamState.Status, onRefresh: () -> Unit, acti
                 Text("Not on a network", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "Connect to Wi-Fi or turn on your hotspot, then tap refresh.",
+                    "Mobile data can't be used for this. Connect to Wi-Fi or turn on your hotspot, then tap refresh.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(12.dp))
@@ -272,7 +286,7 @@ private fun ConnectCard(status: LanBeamState.Status, onRefresh: () -> Unit, acti
             Text("or open in a browser", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(
                 url, style = MaterialTheme.typography.titleMedium, fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary, maxLines = 1, softWrap = false,
                 modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { actions.copyText(url) }.padding(horizontal = 8.dp, vertical = 4.dp),
             )
             Spacer(Modifier.height(10.dp))
@@ -284,23 +298,32 @@ private fun ConnectCard(status: LanBeamState.Status, onRefresh: () -> Unit, acti
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(Modifier.weight(1f)) {
                     if (status.addresses.size > 1) {
-                        status.addresses.forEach { a ->
-                            FilterChip(selected = a.ip == addr.ip, onClick = { selectedIp = a.ip }, label = { Text("${a.kind.label} ${a.ip}") })
+                        // Labels only, so nothing is cut off; the full link is shown above.
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            status.addresses.distinctBy { it.kind }.forEach { a ->
+                                FilterChip(selected = a.kind == addr.kind, onClick = { selectedIp = a.ip }, label = { Text(a.kind.label) })
+                            }
                         }
-                    } else {
-                        Text(
-                            "via ${addr.kind.label}", style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp),
-                        )
                     }
+                    Text(
+                        audienceOf(addr.kind), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 4.dp, top = 2.dp),
+                    )
                 }
                 IconButton(onClick = onRefresh) { Icon(Icons.Default.Refresh, contentDescription = "Refresh network address") }
             }
             TextButton(onClick = onHelp) { Text("Other device can't connect?") }
         }
     }
+}
+
+private fun audienceOf(kind: LanAddresses.Kind) = when (kind) {
+    LanAddresses.Kind.WIFI -> "For devices on the same Wi-Fi as this phone"
+    LanAddresses.Kind.HOTSPOT -> "For devices connected to this phone's hotspot"
+    LanAddresses.Kind.ETHERNET -> "For devices on the same wired network"
+    LanAddresses.Kind.OTHER -> "For devices on the same local network"
 }
 
 @Composable
@@ -387,7 +410,7 @@ private fun StorageNotice(onAllow: () -> Unit) {
     ) {
         Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
-                "Files are kept in app storage. Allow file access to keep them in Download/LANBeam.",
+                "Received files are kept in app storage. Allow storage access to save them in Download/LANBeam.",
                 style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f),
             )
             TextButton(onClick = onAllow) { Text("Allow") }
