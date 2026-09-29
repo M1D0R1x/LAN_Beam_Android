@@ -78,6 +78,7 @@ import com.example.lanbeam.server.TransferTracker
 
 /** Everything the screen can ask the host activity to do (intents, pickers, settings). */
 interface AppActions {
+    fun pickMedia()
     fun pickFiles()
     fun openFile(item: FileItem)
     fun shareFile(item: FileItem)
@@ -112,6 +113,7 @@ fun LanBeamApp(
     var showRename by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf<FileItem?>(null) }
     var confirmClear by remember { mutableStateOf(false) }
+    var showAdd by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -157,7 +159,7 @@ fun LanBeamApp(
         floatingActionButton = {
             if (tab == 0) {
                 ExtendedFloatingActionButton(
-                    onClick = actions::pickFiles,
+                    onClick = { showAdd = true },
                     icon = { Icon(Icons.Default.Add, contentDescription = null) },
                     text = { Text("Add files") },
                 )
@@ -228,6 +230,11 @@ fun LanBeamApp(
     }
 
     if (showHelp) HelpSheet(onDismiss = { showHelp = false })
+    if (showAdd) AddSheet(
+        onDismiss = { showAdd = false },
+        onMedia = { showAdd = false; actions.pickMedia() },
+        onFiles = { showAdd = false; actions.pickFiles() },
+    )
     if (showRename) RenameDialog(deviceName, onDismiss = { showRename = false }, onSave = { onRename(it); showRename = false })
     confirmDelete?.let { item ->
         AlertDialog(
@@ -476,8 +483,39 @@ private fun HelpSheet(onDismiss: () -> Unit) {
                 "Works on hotspot but not on your router?",
                 "Your router is blocking devices from talking to each other. Look for \"AP isolation\", \"client isolation\" or \"guest network\" in its settings and turn it off, or put both devices on the main (not guest) network. Using this phone's hotspot always works.",
             )
+            HelpItem(
+                "Slow transfers?",
+                "Speed is set by the Wi-Fi link, not your internet plan. Phone hotspots often default to 2.4 GHz (about 3-8 MB/s); switch the hotspot band to 5 GHz in Settings > Hotspot for 20-60 MB/s. On a router, use its 5 GHz network. The web page's \"Connect a device\" dialog has a speed test.",
+            )
             HelpItem("VPN", "A VPN on either device can block local traffic. Pause it while transferring.")
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AddSheet(onDismiss: () -> Unit, onMedia: () -> Unit, onFiles: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp).navigationBarsPadding()) {
+            Text("Add to shared files", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp))
+            SheetOption("Photos & videos", "Pick from your gallery", onMedia)
+            SheetOption("Files", "Documents, APKs, music, anything", onFiles)
+            Text(
+                "LAN Beam only sees what you pick. It never scans your storage.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SheetOption(title: String, subtitle: String, onClick: () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable(onClick = onClick).padding(horizontal = 8.dp, vertical = 12.dp),
+    ) {
+        Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+        Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

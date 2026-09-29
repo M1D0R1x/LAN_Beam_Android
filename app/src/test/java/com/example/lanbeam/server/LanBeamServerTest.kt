@@ -131,6 +131,13 @@ class LanBeamServerTest {
         assertTrue(String(r.body).contains("\"offset\":0"))
     }
 
+    @Test fun speedTestStreamsAndSinks() = RawHttp(port).use { c ->
+        val d = c.request("GET", "/api/speedtest?bytes=1000000")
+        assertEquals(200, d.status); assertEquals(1_000_000, d.body.size)
+        val u = c.request("POST", "/api/speedtest", body = ByteArray(500_000))
+        assertTrue(String(u.body).contains("\"received\":500000"))
+    }
+
     @Test fun rawPutUpload() = RawHttp(port).use { c ->
         val r = c.request("PUT", "/api/upload/raw?name=raw.bin", body = data)
         assertEquals(200, r.status)

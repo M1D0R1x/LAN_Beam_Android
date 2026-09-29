@@ -92,6 +92,7 @@ class LanBeamServer(
             uri == "/" || uri == "/index.html" -> newFixedLengthResponse(Response.Status.OK, "text/html", env.frontendHtml())
                 .also { it.addHeader("Cache-Control", "no-cache") }
             uri == "/api/ping" -> json("""{"ok":true}""")
+            uri == "/api/speedtest" -> handleSpeedTest(session)
             uri == "/api/info" -> json(infoJson())
             uri == "/api/files" -> listFiles(param(session, "path") ?: "/")
             uri == "/api/download" -> handleDownload(session, attachment = true)
@@ -214,13 +215,23 @@ class LanBeamServer(
     private fun handleChunk(session: IHTTPSession): Response {
         val id = param(session, "id") ?: throw UploadStore.UploadException(400, "Missing id")
         return when (session.method) {
-            Method.GET, Method.HEAD -> json("""{"offset":${uploads.currentOffset(id)}}""")
+            Method.GET, Method.HEAD -> {
+                val chunks = uploads.doneChunks(id)
+                if (chunks != null) json("""{"offset":0,"chunks":[${chunks.sorted().joinToString(",")}]}""")
+                else json("""{"offset":${uploads.currentOffset(id)}}""")
+            }
             Method.DELETE -> {
                 uploads.cancel(id)
                 json("""{"ok":true}""")
             }
             Method.POST, Method.PUT -> {
                 val name = HttpUtil.sanitizeFileName(param(session, "name"))
+                val index = param(session, "index")?.toIntOrNull()
+                if (index != null) {
+                    val total = param(session, "total")?.toLongOrNull() ?: throw UploadStore.UploadException(400, "Missing total")
+                    val chunkSize = param(session, "chunkSize")?.toLongOrNull() ?: throw UploadStore.UploadException(400, "Missing chunkSize")
+                    return receiveIndexed(session, id, name, total, chunkSize, index, contentLength(session))
+                }
                 val offset = param(session, "offset")?.toLongOrNull() ?: throw UploadStore.UploadException(400, "Missing offset")
                 val total = param(session, "total")?.toLongOrNull() ?: throw UploadStore.UploadException(400, "Missing total")
                 val len = contentLength(session)
@@ -238,6 +249,18 @@ class LanBeamServer(
         return receive(session, id, name, 0, len, len)
     }
 
+    private fun receiveIndexed(session: IHTTPSession, id: String, name: String, total: Long, chunkSize: Long, index: Int, len: Long): Response {
+        val key = "up:$id"
+        val already = (uploads.doneChunks(id)?.size ?: 0).toLong() * chunkSize
+        val handle = TransferTracker.acquire(key, name, TransferTracker.Direction.UPLOAD, session.remoteIpAddress ?: "", total, minOf(already, total))
+        val result = try {
+            uploads.writeIndexedChunk(id, name, total, chunkSize, index, len, session.inputStream) { handle.add(it.toLong()) }
+        } finally {
+            TransferTracker.release(key)
+        }
+        return finish(result)
+    }
+
     private fun receive(session: IHTTPSession, id: String, name: String, offset: Long, total: Long, len: Long): Response {
         val key = "up:$id"
         val handle = TransferTracker.acquire(key, name, TransferTracker.Direction.UPLOAD, session.remoteIpAddress ?: "", total, offset)
@@ -246,6 +269,10 @@ class LanBeamServer(
         } finally {
             TransferTracker.release(key)
         }
+        return finish(result)
+    }
+
+    private fun finish(result: UploadStore.ChunkResult): Response {
         if (result.done && result.file != null) {
             dirInfoCache.clear()
             env.onUploadComplete(result.file.name)
@@ -274,6 +301,44 @@ class LanBeamServer(
         env.onUploadComplete(dest.name)
         env.onFilesChanged()
         return json("""{"ok":true,"filename":${HttpUtil.jsonStr(dest.name)},"size":${dest.length()}}""")
+    }
+
+    // ─── Network speed test (no disk involved) ───
+
+    /**
+     * GET ?bytes=N streams N bytes of zeros; POST/PUT reads and discards the body. Separates
+     * "the Wi-Fi link is slow" from "the app or storage is slow" — the page shows both numbers.
+     */
+    private fun handleSpeedTest(session: IHTTPSession): Response {
+        if (session.method == Method.POST || session.method == Method.PUT) {
+            val len = contentLength(session)
+            val buf = ByteArray(UploadStore.BUFFER)
+            var left = len
+            val t0 = System.nanoTime()
+            while (left > 0) {
+                val n = session.inputStream.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
+                if (n < 0) break
+                left -= n
+            }
+            val ms = (System.nanoTime() - t0) / 1_000_000
+            return json("""{"received":${len - left},"serverMs":$ms}""")
+        }
+        val bytes = (param(session, "bytes")?.toLongOrNull() ?: (32L shl 20)).coerceIn(1, 512L shl 20)
+        val zeros = object : InputStream() {
+            var left = bytes
+            override fun read(): Int = if (left-- > 0) 0 else -1
+            override fun read(b: ByteArray, off: Int, len: Int): Int {
+                if (left <= 0) return -1
+                val n = minOf(len.toLong(), left).toInt()
+                java.util.Arrays.fill(b, off, off + n, 0)
+                left -= n
+                return n
+            }
+        }
+        return newFixedLengthResponse(Response.Status.OK, "application/octet-stream", zeros, bytes).also {
+            it.addHeader("Cache-Control", "no-store")
+            it.addHeader("Accept-Ranges", "none") // also keeps it out of gzip
+        }
     }
 
     // ─── Misc endpoints ───

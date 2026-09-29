@@ -95,7 +95,7 @@ const cases = [
 let failed = 0;
 for (const c of cases) {
   const bytes = crypto.randomBytes(c.size);
-  if (c.cutAfter) faultOnce = url => (url.includes('/api/upload/chunk') && url.includes('offset=8388608') ? c.cutAfter : null);
+  if (c.cutAfter) faultOnce = url => (url.includes('/api/upload/chunk') && url.includes('index=1&') ? c.cutAfter : null);
   const t0 = performance.now();
   vm.runInContext('enqueue', ctx)([new File([bytes], c.name, { lastModified: 1700000000000 })]);
   await waitIdle();
