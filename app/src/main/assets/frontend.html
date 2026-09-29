@@ -121,6 +121,8 @@ footer { text-align:center; font-size:12.5px; color:var(--muted); padding:8px 20
 .sheet { background:var(--surface); border-radius:22px; padding:24px; width:min(380px,100%); text-align:center; }
 .sheet h3 { font-size:17px; }
 .sheet img.qr { width:220px; height:220px; background:#fff; border-radius:14px; padding:10px; margin:16px auto; display:block; }
+.speed { margin-top:14px; padding-top:14px; border-top:1px solid var(--line); }
+.speed b { color:var(--text); }
 .sheet code { font-size:15px; font-weight:700; color:var(--accent); word-break:break-all; }
 .viewer { position:fixed; inset:0; background:rgba(0,0,0,.92); z-index:60; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:16px; }
 .viewer img, .viewer video { max-width:100%; max-height:78vh; border-radius:10px; }
@@ -209,6 +211,7 @@ footer { text-align:center; font-size:12.5px; color:var(--muted); padding:8px 20
 const $ = id => document.getElementById(id);
 const CHUNK = 8 * 1024 * 1024;   // bytes per request; a failed request re-sends at most this much
 const PARALLEL = 2;              // files in flight at once
+const WORKERS = 3;               // chunks of one file in flight at once (separate TCP connections)
 const MAX_FAILS = 12;            // consecutive failed attempts before a file is marked failed
 
 let info = {};
@@ -334,8 +337,33 @@ function showConnect() {
     <img class="qr" src="/api/qr?t=${Date.now()}" alt="QR code for ${esc(url)}">
     <code>${esc(url)}</code>
     <p class="meta" style="margin-top:10px">Scan with a phone camera or type the address in any browser on the same Wi-Fi.</p>
-    <div style="margin-top:16px"><button class="ghost" id="m-close">Close</button></div></div></div>`;
+    <div class="speed" id="speed"><button class="ghost" id="speed-btn">Test connection speed</button><div class="meta" id="speed-out" style="margin-top:8px"></div></div>
+    <div style="margin-top:14px"><button class="ghost" id="m-close">Close</button></div></div></div>`;
   $('m').onclick = e => { if (e.target.id === 'm' || e.target.id === 'm-close') $('overlay').innerHTML = ''; };
+  $('speed-btn').onclick = runSpeedTest;
+}
+
+// Measures the raw link (no disk on the phone) in both directions, so a slow transfer can be
+// blamed on the right thing: Wi-Fi/hotspot band and distance vs. the app.
+async function runSpeedTest() {
+  const out = $('speed-out'), btn = $('speed-btn');
+  btn.disabled = true; btn.textContent = 'Testing…';
+  const mbps = (bytes, ms) => bytes / 1048576 / (ms / 1000);
+  try {
+    const DL = 32 << 20, UL = 16 << 20;
+    let t0 = performance.now();
+    const res = await fetch('/api/speedtest?bytes=' + DL + '&t=' + Date.now(), { cache: 'no-store' });
+    const reader = res.body.getReader(); let got = 0;
+    for (;;) { const { done, value } = await reader.read(); if (done) break; got += value.length; }
+    const down = mbps(got, performance.now() - t0);
+    t0 = performance.now();
+    await fetch('/api/speedtest', { method: 'POST', body: new Blob([new Uint8Array(UL)]), headers: { 'Content-Type': 'application/octet-stream' } });
+    const up = mbps(UL, performance.now() - t0);
+    const slow = Math.min(down, up) < 10;
+    out.innerHTML = `Phone → this device <b>${down.toFixed(1)} MB/s</b> · This device → phone <b>${up.toFixed(1)} MB/s</b>` +
+      (slow ? '<br>That is a slow link. On a phone hotspot, set its band to 5 GHz (Settings → Hotspot) and keep the devices close. On a router, use its 5 GHz network.' : '<br>This is about what file transfers will reach.');
+  } catch (e) { out.textContent = 'Speed test failed: ' + e.message; }
+  btn.disabled = false; btn.textContent = 'Test again';
 }
 
 // ─── Files on phone ───
@@ -517,47 +545,70 @@ async function run(item) {
 
 async function upload(item) {
   const f = item.file, total = f.size;
-  let offset = 0, fails = 0;
-  try { offset = (await getJSON('/api/upload/chunk?id=' + item.id)).offset || 0; } catch (_) {}
-  if (offset > total) offset = 0;
-  item.sent = offset;
-  for (;;) {
-    const end = Math.min(offset + CHUNK, total);
-    try {
-      const r = await sendChunk(item, offset, end, total);
-      fails = 0; item.note = '';
-      offset = r.offset;
-      if (r.done) { item.finalName = r.filename; item.sent = total; return; }
-    } catch (e) {
-      if (item.status === 'cancelled') throw e;
-      if (e.status === 409 && typeof e.offset === 'number') { offset = e.offset; item.sent = offset; continue; }
-      if (e.status >= 400 && e.status < 500) throw new Error(e.message || ('Rejected (' + e.status + ')'));
-      if (++fails > MAX_FAILS) throw new Error('Connection lost - tap retry');
-      item.note = 'Connection dropped · retrying'; renderQueue();
-      await sleep(Math.min(500 * 2 ** (fails - 1), 10000));
-      try { offset = (await getJSON('/api/upload/chunk?id=' + item.id)).offset; item.sent = offset; } catch (_) {}
+  const n = total ? Math.ceil(total / CHUNK) : 1;
+  const len = i => Math.max(0, Math.min(CHUNK, total - i * CHUNK));
+  let done = new Set();
+  try { const st = await getJSON('/api/upload/chunk?id=' + item.id); if (Array.isArray(st.chunks)) done = new Set(st.chunks); } catch (_) {}
+  item.doneBytes = [...done].reduce((a, i) => a + len(i), 0);
+  item.inflight = new Map();
+  item.xhrs = new Set();
+  const pending = [];
+  for (let i = 0; i < n; i++) if (!done.has(i)) pending.push(i);
+  if (!pending.length) pending.push(n - 1); // every chunk stored but not finalised: resend the last to finish
+  const sync = () => { item.sent = item.doneBytes + [...item.inflight.values()].reduce((a, b) => a + b, 0); };
+  sync();
+  let finalName = null, fatal = null;
+
+  async function worker() {
+    while (pending.length && !fatal && item.status !== 'cancelled') {
+      const i = pending.shift();
+      let fails = 0;
+      for (;;) {
+        try {
+          const r = await sendIndexed(item, i, total, len(i));
+          item.inflight.delete(i); item.doneBytes += len(i); sync();
+          if (fails) { item.note = ''; }
+          if (r.done) finalName = r.filename;
+          break;
+        } catch (e) {
+          item.inflight.delete(i); sync();
+          if (item.status === 'cancelled') return;
+          if (e.status >= 400 && e.status < 500) { fatal = new Error(e.message || ('Rejected (' + e.status + ')')); return; }
+          if (++fails > MAX_FAILS) { fatal = new Error('Connection lost - tap retry'); return; }
+          item.note = 'Connection dropped · retrying'; renderQueue();
+          await sleep(Math.min(500 * 2 ** (fails - 1), 10000));
+        }
+      }
     }
   }
+  await Promise.all(Array.from({ length: Math.min(WORKERS, pending.length) }, worker));
+  if (item.status === 'cancelled') throw new Error('Cancelled');
+  if (fatal) throw fatal;
+  if (!finalName) throw new Error('Upload incomplete - tap retry');
+  item.finalName = finalName; item.sent = total;
 }
 
-function sendChunk(item, start, end, total) {
+function sendIndexed(item, index, total, length) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    item.xhr = xhr;
-    const q = `id=${encodeURIComponent(item.id)}&name=${encodeURIComponent(item.file.name)}&offset=${start}&total=${total}`;
+    item.xhrs.add(xhr);
+    const q = `id=${encodeURIComponent(item.id)}&name=${encodeURIComponent(item.file.name)}&index=${index}&chunkSize=${CHUNK}&total=${total}`;
     xhr.open('POST', '/api/upload/chunk?' + q);
     xhr.timeout = 120000;
     xhr.setRequestHeader('Content-Type', 'application/octet-stream');
-    xhr.upload.onprogress = e => { item.sent = start + e.loaded; tick(item); };
+    xhr.upload.onprogress = e => { item.inflight.set(index, e.loaded); item.sent = item.doneBytes + [...item.inflight.values()].reduce((a, b) => a + b, 0); tick(item); };
+    const end = () => item.xhrs.delete(xhr);
     xhr.onload = () => {
+      end();
       let body = {}; try { body = JSON.parse(xhr.responseText); } catch (_) {}
       if (xhr.status === 200) resolve(body);
-      else reject(Object.assign(new Error(body.error || xhr.statusText), { status: xhr.status, offset: body.offset }));
+      else reject(Object.assign(new Error(body.error || xhr.statusText), { status: xhr.status }));
     };
-    xhr.onerror = () => reject(Object.assign(new Error('Network error'), { status: 0 }));
-    xhr.ontimeout = () => reject(Object.assign(new Error('Timed out'), { status: 0 }));
-    xhr.onabort = () => reject(Object.assign(new Error('Cancelled'), { status: -1 }));
-    xhr.send(item.file.slice(start, end));
+    xhr.onerror = () => { end(); reject(Object.assign(new Error('Network error'), { status: 0 })); };
+    xhr.ontimeout = () => { end(); reject(Object.assign(new Error('Timed out'), { status: 0 })); };
+    xhr.onabort = () => { end(); reject(Object.assign(new Error('Cancelled'), { status: -1 })); };
+    const start = index * CHUNK;
+    xhr.send(item.file.slice(start, start + length));
   });
 }
 
@@ -609,7 +660,7 @@ $('queue').onclick = e => {
     const q = queue[+c.dataset.cancel];
     const wasUploading = q.status === 'uploading';
     q.status = 'cancelled';
-    if (q.xhr) q.xhr.abort();
+    (q.xhrs || []).forEach(x => x.abort());
     if (wasUploading) fetch('/api/upload/chunk?id=' + q.id, { method: 'DELETE' }).catch(() => {});
     localStorage.removeItem(q.key);
     renderQueue();

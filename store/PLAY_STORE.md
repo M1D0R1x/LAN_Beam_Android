@@ -47,6 +47,16 @@ Everything the Play Console asks for, ready to paste. Build artefacts are produc
   notification with a Stop action, and stops when the user turns sharing off."*
 - Demo video: record 20-30 s showing start → transfer → notification → Stop.
 
+## Storage and media permissions (why there are none to declare)
+- Files to share come from the **Android photo picker** (photos/videos) and the **system file picker**
+  (everything else), plus the share sheet. These grant access to the picked items only and need no
+  permission. Play's Photo and Video Permissions policy allows `READ_MEDIA_IMAGES`/`READ_MEDIA_VIDEO`
+  only when a picker cannot serve the core feature, so LAN Beam does not request them, and therefore
+  never shows the "Allow all / Limited / Don't allow" media dialog.
+- Received files are created in `Download/LANBeam` via direct paths (allowed without permission on
+  Android 11+). Android 10 and older use `WRITE_EXTERNAL_STORAGE` (`maxSdkVersion=29`).
+- No `MANAGE_EXTERNAL_STORAGE`, so no All-files-access declaration.
+
 ## Other App content answers
 - Ads: No · Target audience: 18+ (or 13+) · Content rating questionnaire: Utility, no user-generated content shared publicly.
 - News app / COVID / Government: No.

@@ -89,4 +89,43 @@ class UploadStoreTest {
         assertTrue(s.cancel(id))
         assertEquals(0L, s.currentOffset(id))
     }
+
+    @Test fun parallelChunksInAnyOrderAssemble() {
+        val cs = 64 * 1024L
+        val data = Random(5).nextBytes((cs * 5 + 1234).toInt())
+        val s = store()
+        val order = listOf(3, 0, 5, 1, 4, 2)
+        var result: UploadStore.ChunkResult? = null
+        val threads = order.map { i ->
+            Thread {
+                val start = (i * cs).toInt()
+                val len = minOf(cs.toInt(), data.size - start)
+                val r = s.writeIndexedChunk(id, "par.bin", data.size.toLong(), cs, i, len.toLong(), ByteArrayInputStream(data, start, len))
+                if (r.done) synchronized(this) { result = r }
+            }.also { it.start() }
+        }
+        threads.forEach { it.join() }
+        assertArrayEquals(data, result!!.file!!.readBytes())
+        assertFalse(s.indexFile(id).exists())
+    }
+
+    @Test fun parallelResumeKnowsWhichChunksAreStored() {
+        val cs = 64 * 1024L
+        val data = Random(6).nextBytes((cs * 3).toInt())
+        store().writeIndexedChunk(id, "r.bin", data.size.toLong(), cs, 1, cs, ByteArrayInputStream(data, cs.toInt(), cs.toInt()))
+        // New store instance = app restarted: the .idx file carries the state.
+        val s2 = store()
+        assertEquals(setOf(1), s2.doneChunks(id))
+        s2.writeIndexedChunk(id, "r.bin", data.size.toLong(), cs, 0, cs, ByteArrayInputStream(data, 0, cs.toInt()))
+        val r = s2.writeIndexedChunk(id, "r.bin", data.size.toLong(), cs, 2, cs, ByteArrayInputStream(data, (2 * cs).toInt(), cs.toInt()))
+        assertTrue(r.done)
+        assertArrayEquals(data, r.file!!.readBytes())
+    }
+
+    @Test fun parallelRejectsWrongChunkLength() {
+        try {
+            store().writeIndexedChunk(id, "x", 200_000, 65_536, 0, 10, ByteArrayInputStream(ByteArray(10)))
+            fail()
+        } catch (e: UploadStore.UploadException) { assertEquals(400, e.status) }
+    }
 }

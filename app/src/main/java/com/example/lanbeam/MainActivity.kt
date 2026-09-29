@@ -14,6 +14,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
@@ -36,12 +37,22 @@ class MainActivity : ComponentActivity(), AppActions {
 
     private val vm: AppViewModel by viewModels()
 
-    private val pickFilesLauncher = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+    private fun onPicked(uris: List<Uri>) {
         if (uris.isNotEmpty()) {
             vm.addFiles(uris)
             toast(if (uris.size == 1) "Adding 1 file…" else "Adding ${uris.size} files…")
         }
     }
+
+    /** Any file type, through the system file picker (Storage Access Framework): no permission. */
+    private val pickFilesLauncher = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments(), ::onPicked)
+
+    /**
+     * Photos and videos through the Android photo picker: no media permission. Google Play only
+     * allows READ_MEDIA_IMAGES/VIDEO when the picker cannot serve the app's core feature, and
+     * choosing what to send is exactly what the picker is for.
+     */
+    private val pickMediaLauncher = registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(), ::onPicked)
 
     /** All runtime permissions in one system prompt, asked once from the welcome screen. */
     private val permissionLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -94,6 +105,7 @@ class MainActivity : ComponentActivity(), AppActions {
                     WelcomeScreen(
                         permissions = PermissionInfo.forThisDevice(),
                         onContinue = ::completeOnboarding,
+                        onSkip = { vm.finishOnboarding(); LanBeamService.start(this) },
                     )
                 } else LanBeamApp(
                     status = status,
@@ -157,6 +169,10 @@ class MainActivity : ComponentActivity(), AppActions {
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
 
     // ─── AppActions ───
+
+    override fun pickMedia() {
+        pickMediaLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+    }
 
     override fun pickFiles() {
         try {
