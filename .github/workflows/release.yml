@@ -5,6 +5,10 @@ on:
     tags:
       - 'v*' # Triggers on any tag push matching v1.0, v1.1, etc.
 
+# The repo default token is read-only; attaching assets to a release needs write.
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build Android APK
@@ -39,7 +43,19 @@ jobs:
             cp app/build/outputs/apk/release/app-release-unsigned.apk build-artifacts/LAN-Beam-${{ github.ref_name }}-release-unsigned.apk
           fi
 
+      # Releases published by hand already carry the signed APK. Don't add
+      # CI debug builds (signed with a different key) next to it.
+      - name: Check for an existing release with assets
+        id: existing
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          count=$(gh release view "${{ github.ref_name }}" --json assets --jq '.assets | length' 2>/dev/null || echo 0)
+          echo "assets=$count" >> "$GITHUB_OUTPUT"
+          echo "Existing release assets: $count"
+
       - name: Create GitHub Release
+        if: steps.existing.outputs.assets == '0'
         uses: softprops/action-gh-release@v2
         with:
           files: |
